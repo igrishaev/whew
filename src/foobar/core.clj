@@ -2,6 +2,7 @@
   (:refer-clojure :exclude [future
                             future?
                             catch
+                            ;; deref
                             loop
                             recur
                             let])
@@ -105,6 +106,19 @@
   (map-indexed vector coll))
 
 
+;; deref?
+
+#_
+(defn deref
+  ([^CompletableFuture f]
+   (-> f fold .get))
+
+  ([^CompletableFuture f ms-timeout ]
+   (-> f fold .get))
+
+  )
+
+
 ;; TODO: fold
 (defmacro let [bindings & body]
   (cc/let [FUTS (gensym "futs")
@@ -120,7 +134,7 @@
                          (fn [acc [i bind]]
                            (-> acc
                                (conj bind)
-                               (conj `(deref (nth ~FUTS ~i)))))
+                               (conj `(deref (fold (nth ~FUTS ~i))))))
                          []
                          (enumerate (map first pairs)))]
                ~@body))))))
@@ -216,10 +230,11 @@
      (a/recur (inc i))))
 
 
+#_
 (a/loop [i 0]
-   (if (= i LIM)
-     :done
-     (a/recur (inc i))))
+  (if (= i LIM)
+    :done
+    (a/recur (inc i))))
 
 
 
