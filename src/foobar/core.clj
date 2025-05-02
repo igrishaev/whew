@@ -72,10 +72,10 @@
 (defmacro then
   {:style/indent 1}
   [f [bind] & body]
-  `(.thenComposeAsync (->future ~f)
+  `(.thenCompose (->future ~f)
                       (function [this# ~bind]
                         (if (instance? CompletableFuture ~bind)
-                          (.thenComposeAsync ~(with-meta bind {:tag `CompletableFuture}) this#)
+                          (.thenCompose ~(with-meta bind {:tag `CompletableFuture}) this#)
                           (future ~@body)))))
 
 
@@ -164,18 +164,43 @@
                               []
                               (enumerate (take-nth 2 bindings)))]
                     (-> (future ~@body)
-                        (.thenComposeAsync func#)))
+                        (.thenCompose func#)))
                   (CompletableFuture/completedFuture ~result)))]
        (-> (future
              (cc/let [~@bindings]
                ~@body))
-           (.thenComposeAsync func#)))))
+           (.thenCompose func#)))))
+
+(def LIM 1000000)
 
 #_
-(f/loop [i 0]
-  (if (= i 3)
-    :done
-    (f/recur (inc i))))
+@(f/loop [i 0]
+   (if (= i LIM)
+     :done
+     (f/recur (inc i))))
+
+#_
+(require '[manifold.deferred :as d])
+
+
+#_
+@(d/loop [i 0]
+   (if (= i LIM)
+     :done
+     (d/recur (inc i))))
+
+
+#_
+(require '[qbits.auspex :as a])
+
+
+#_
+@(a/loop [i 0]
+   (if (= i LIM)
+     :done
+     (a/recur (inc i))))
+
+
 
 ;; completeOnTimeout
 ;; orTimeout
