@@ -34,6 +34,11 @@
   `(CompletableFuture/supplyAsync
     (supplier ~@body)))
 
+#_
+(defmacro future [& body]
+  `(CompletableFuture/completedFuture
+    (do ~@body)))
+
 
 #_
 (defn fold
@@ -72,11 +77,12 @@
 (defmacro then
   {:style/indent 1}
   [f [bind] & body]
-  `(.thenCompose (->future ~f)
-                      (function [this# ~bind]
-                        (if (instance? CompletableFuture ~bind)
-                          (.thenCompose ~(with-meta bind {:tag `CompletableFuture}) this#)
-                          (future ~@body)))))
+  `(cc/let [func#
+            (function [func# ~bind]
+              (if (future? ~bind)
+                (.thenCompose ~(with-meta bind {:tag `CompletableFuture}) func#)
+                (future ~@body)))]
+     (.thenCompose (->future ~f) func#)))
 
 
 (defn fold
@@ -100,12 +106,13 @@
 
 
 ;; TODO: fold
-(defmacro let [binding & body]
-  (cc/let [FUTS (gensym "futs")]
+(defmacro let [bindings & body]
+  (cc/let [FUTS (gensym "futs")
+           pairs (partition 2 bindings)]
     `(cc/let [~FUTS
               (into-array
                CompletableFuture
-               [~@(for [form (take-nth 2 (rest binding))]
+               [~@(for [form (map second pairs)]
                     `(future ~form))])]
        (-> (CompletableFuture/allOf ~FUTS)
            (then [_#]
@@ -115,7 +122,7 @@
                                (conj bind)
                                (conj `(deref (nth ~FUTS ~i)))))
                          []
-                         (enumerate (take-nth 2 binding)))]
+                         (enumerate (map first pairs)))]
                ~@body))))))
 
 
@@ -150,22 +157,30 @@
   (some-> x meta ::recur?))
 
 
-
 (defmacro loop [bindings & body]
-  (cc/let [result (gensym "result")]
-    `(cc/let [^Function func#
+  (cc/let [result (gensym "result")
+           pairs (partition 2 bindings)]
+    `(cc/let [func#
               (function [func# ~result]
-                (if (recur? ~result)
+                (cond
+
+                  (recur? ~result)
                   (cc/let [~@(reduce
                               (fn [acc [i bind]]
                                 (-> acc
                                     (conj bind)
                                     (conj `(nth ~result ~i))))
                               []
-                              (enumerate (take-nth 2 bindings)))]
+                              (enumerate (map first pairs)))]
                     (-> (future ~@body)
                         (.thenCompose func#)))
+
+                  (future? ~result)
+                  (.thenCompose ~(with-meta result {:tag `CompletableFuture}) func#)
+
+                  :else
                   (CompletableFuture/completedFuture ~result)))]
+
        (-> (future
              (cc/let [~@bindings]
                ~@body))
@@ -199,6 +214,13 @@
    (if (= i LIM)
      :done
      (a/recur (inc i))))
+
+
+(a/loop [i 0]
+   (if (= i LIM)
+     :done
+     (a/recur (inc i))))
+
 
 
 
