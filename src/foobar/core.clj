@@ -2,7 +2,11 @@
   (:refer-clojure :exclude [future
                             future?
                             catch
+                            for
+                            map
+                            mapv
                             ;; deref
+                            pvalues
                             loop
                             recur
                             let])
@@ -35,32 +39,19 @@
   `(CompletableFuture/supplyAsync
     (supplier ~@body)))
 
-#_
-(defmacro future [& body]
+
+(defmacro future-sync [& body]
   `(CompletableFuture/completedFuture
     (do ~@body)))
 
 
-#_
-(defn fold
-  ^CompletableFuture [^CompletableFuture f]
-  (cc/let [^CompletableFuture fut (new CompletableFuture)]
-    (.thenApplyAsync f
-                     (function [this result]
-                       (if (instance? CompletableFuture result)
-                         (.thenApplyAsync ^CompletableFuture result this)
-                         (.complete fut result))))
-    fut))
-
-
-#_
-(fold (future 123))
-
 (defn future? [x]
   (instance? CompletableFuture x))
 
+
 (defn throwable? [x]
   (instance? Throwable x))
+
 
 (defn ->future ^CompletableFuture [x]
   (cond
@@ -70,10 +61,9 @@
     (throwable? x)
     (CompletableFuture/failedFuture x)
 
-    ;; deferred?
-
     :else
-    (CompletableFuture/completedFuture x)))
+    (future-sync x)))
+
 
 (defmacro then
   {:style/indent 1}
@@ -81,9 +71,9 @@
   `(cc/let [func#
             (function [func# ~bind]
               (if (future? ~bind)
-                (.thenCompose ~(with-meta bind {:tag `CompletableFuture}) func#)
+                (.thenComposeAsync ~(with-meta bind {:tag `CompletableFuture}) func#)
                 (future ~@body)))]
-     (.thenCompose (->future ~f) func#)))
+     (.thenComposeAsync (->future ~f) func#)))
 
 
 (defn fold
@@ -91,9 +81,19 @@
   (-> f (then [x] x)))
 
 
-;; then-fn
-;; chain
+(defn then-fn
+  ([f func]
+   (-> f (then [x]
+           (func x))))
+  ([f func & args]
+   (-> f (then [x]
+           (apply func x args)))))
 
+
+;; then-fns
+;; chain
+;; ->
+;; ->>
 
 ;; TODO: fold
 (defmacro catch
@@ -103,7 +103,7 @@
 
 
 (defn enumerate [coll]
-  (map-indexed vector coll))
+  (cc/map-indexed vector coll))
 
 
 ;; deref?
@@ -119,14 +119,17 @@
   )
 
 
-;; TODO: fold
+(defn future-array
+  ^"[Ljava.util.concurrent.CompletableFuture;" [coll]
+  (into-array CompletableFuture coll))
+
+
 (defmacro let [bindings & body]
   (cc/let [FUTS (gensym "futs")
            pairs (partition 2 bindings)]
     `(cc/let [~FUTS
-              (into-array
-               CompletableFuture
-               [~@(for [form (map second pairs)]
+              (future-array
+               [~@(cc/for [form (cc/map second pairs)]
                     `(future ~form))])]
        (-> (CompletableFuture/allOf ~FUTS)
            (then [_#]
@@ -134,19 +137,88 @@
                          (fn [acc [i bind]]
                            (-> acc
                                (conj bind)
-                               (conj `(deref (fold (nth ~FUTS ~i))))))
+                               (conj `(-> ~FUTS
+                                          (nth ~i)
+                                          (fold)
+                                          (deref)))))
                          []
-                         (enumerate (map first pairs)))]
+                         (enumerate (cc/map first pairs)))]
                ~@body))))))
 
 
 (defmacro zip [& forms]
-  `(list ~@(for [form forms]
-             `(future ~form))))
+  (cc/let [FUTS (gensym "FUTS")]
+    `(cc/let [~FUTS
+              (future-array
+               [~@(cc/for [form forms]
+                    `(future ~form))])]
+       (-> (CompletableFuture/allOf ~FUTS)
+           (then [_#]
+             (cc/mapv (fn [fut#]
+                        (-> fut# fold deref))
+                      ~FUTS))))))
 
 
-;; pvalues
-;; for
+(defmacro pvalues [& forms]
+  `(zip ~@forms))
+
+
+(defmacro for [bindings & body]
+  (cc/let [FUTS (gensym "FUTS")]
+    `(cc/let [~FUTS
+              (future-array
+               (cc/for [~@bindings]
+                 (future ~@body)))]
+       (-> (CompletableFuture/allOf ~FUTS)
+           (then [_#]
+             (cc/mapv (fn [fut#]
+                        (-> fut# fold deref))
+                      ~FUTS))))))
+
+#_
+(f/for [x [1 2 3]]
+  (get-user x))
+
+
+(defn map
+  ([f coll]
+   (cc/map (fn [v]
+             (-> v
+                 (->future)
+                 (fold)
+                 (.thenApplyAsync (function [this x]
+                                    (f x)))
+                 (fold)))
+           coll))
+
+  #_
+  ([f coll & colls]
+   (apply cc/map
+
+          (fn [& vs]
+            (for [v vs]
+              (-> v
+                  (->future)
+                  (fold)
+                  (.thenApplyAsync (function [this x]
+                                     (f x)))
+                  (fold))
+              )
+            #_
+            (->> vs
+                 (cc/map ->future)
+                 (cc/map fold)
+                 ...
+                 (cc/map fold))
+            #_
+            (-> fut
+                (->future)
+                (fold)
+                (.thenApplyAsync (function [this x]
+                                   (f x)))
+                (fold)))
+          coll
+          colls)))
 
 
 (defn cancel ^Boolean [^CompletableFuture f]
@@ -164,6 +236,9 @@
 #_
 (defmacro recur [& args]
   `(CompletableFuture/completedFuture (with-meta [~@args] {::recur? true})))
+
+;; completeOnTimeout
+;; orTimeout
 
 
 ;; macro
@@ -185,21 +260,26 @@
                                     (conj bind)
                                     (conj `(nth ~result ~i))))
                               []
-                              (enumerate (map first pairs)))]
+                              (enumerate (cc/map first pairs)))]
                     (-> (future ~@body)
-                        (.thenCompose func#)))
+                        (.thenComposeAsync func#)))
 
                   (future? ~result)
-                  (.thenCompose ~(with-meta result {:tag `CompletableFuture}) func#)
+                  (.thenComposeAsync ~(with-meta result {:tag `CompletableFuture}) func#)
 
                   :else
-                  (CompletableFuture/completedFuture ~result)))]
+                  (future-sync ~result)))]
 
        (-> (future
              (cc/let [~@bindings]
                ~@body))
-           (.thenCompose func#)))))
+           (.thenComposeAsync func#)))))
 
+
+;; -----------
+
+
+#_
 (def LIM 1000000)
 
 #_
@@ -235,9 +315,3 @@
   (if (= i LIM)
     :done
     (a/recur (inc i))))
-
-
-
-
-;; completeOnTimeout
-;; orTimeout
