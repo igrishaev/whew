@@ -12,6 +12,7 @@
                             let])
   (:import
    (java.util.concurrent CompletableFuture
+                         CompletionException
                          Executors
                          TimeUnit
                          TimeoutException)
@@ -22,7 +23,7 @@
 (set! *warn-on-reflection* true)
 
 (alias 'cc 'clojure.core)
-(alias 'f 'foobar.core)
+(alias 'this 'foobar.core)
 
 
 (defmacro supplier ^Supplier [& body]
@@ -59,6 +60,11 @@
   (CompletableFuture/failedFuture e))
 
 
+(defn failed? ^Boolean [f]
+  (when (future? f)
+    (.isCompletedExceptionally ^CompletableFuture f)))
+
+
 (defn ->future ^CompletableFuture [x]
   (cond
     (future? x) x
@@ -72,8 +78,10 @@
       (.thenComposeAsync ^CompletableFuture x this)
       (future-sync x))))
 
+
 (defn fold ^CompletableFuture [^CompletableFuture f]
   (.thenComposeAsync f -FUNC-FOLDER))
+
 
 (defmacro then
   {:style/indent 1}
@@ -82,7 +90,7 @@
             (function [func# ~bind]
               (if (future? ~bind)
                 (.thenComposeAsync ~(with-meta bind {:tag `CompletableFuture}) func#)
-                (future ~@body)))]
+                (fold (this/future ~@body))))]
      (.thenComposeAsync (->future ~f) func#)))
 
 
@@ -95,16 +103,24 @@
            (apply func x args)))))
 
 
-;; then-fns
-;; chain
-;; ->
-;; ->>
+(defmacro chain [f & funcs]
+  `(fold
+    (-> (this/->future ~f)
+        ~@(cc/for [func funcs]
+            `(then-fn ~func)))))
 
-;; TODO: fold
+
 (defmacro catch
   {:style/indent 1}
   [f [e] & body]
-  `(.exceptionally ~f (function [~e] ~@body)))
+  `(cc/let [func#
+            (function [func# e#]
+              (cc/let [~e
+                       (if (instance? CompletionException e#)
+                         (ex-cause e#)
+                         e#)]
+                ~@body))]
+     (.exceptionally (->future ~f) func#)))
 
 
 (defn enumerate [coll]
@@ -122,9 +138,19 @@
        timeout-val))))
 
 
+(def ^Class ^:const FUT_ARR_CLASS
+  (Class/forName "[Ljava.util.concurrent.CompletableFuture;"))
+
+
+(defn future-array? [x]
+  (instance? FUT_ARR_CLASS x))
+
+
 (defn future-array
   ^"[Ljava.util.concurrent.CompletableFuture;" [coll]
-  (into-array CompletableFuture coll))
+  (if (future-array? coll)
+    coll
+    (into-array CompletableFuture coll)))
 
 
 (defmacro let [bindings & body]
@@ -142,7 +168,7 @@
                                (conj bind)
                                (conj `(-> ~FUTS
                                           (nth ~i)
-                                          (deref)))))
+                                          (this/deref)))))
                          []
                          (enumerate (cc/map first pairs)))]
                ~@body))))))
@@ -156,42 +182,28 @@
                     `(future ~form))])]
        (-> (CompletableFuture/allOf ~FUTS)
            (then [_#]
-             (cc/mapv deref ~FUTS))))))
+             (cc/mapv this/deref ~FUTS))))))
 
 
-#_
 (defn zip-futures ^CompletableFuture [futures]
-  (-> futures
-      (future-array)
-      (all-of)
-      (then [_#]
-        (cc/mapv deref ~FUTS))))
-
-
-(defmacro pvalues [& forms]
-  `(zip ~@forms))
+  (cc/let [fa
+           (->> futures
+                (cc/map this/->future)
+                (this/future-array))]
+    (-> (CompletableFuture/allOf fa)
+        (then [_]
+          (cc/mapv this/deref fa)))))
 
 
 (defmacro for [bindings & body]
-  (cc/let [FUTS (gensym "FUTS")]
-    `(cc/let [~FUTS
+  (cc/let [FA (gensym "FA")]
+    `(cc/let [~FA
               (future-array
                (cc/for [~@bindings]
                  (future ~@body)))]
-       (-> (CompletableFuture/allOf ~FUTS)
+       (-> (CompletableFuture/allOf ~FA)
            (then [_#]
-             (cc/mapv deref ~FUTS))))))
-
-#_
-(f/for [x [1 2 3]]
-  (get-user x))
-
-
-(defn all-of ^CompletableFuture [coll]
-  (-> coll
-      future-array
-      (CompletableFuture/allOf)))
-
+             (cc/mapv deref ~FA))))))
 
 (defn map
   ([f coll]
@@ -202,39 +214,32 @@
   ([f coll & colls]
    (apply cc/map
           (fn [& vs]
-            (let [futs
+            (let [fa
                   (->> vs
                        (cc/map ->future)
-                       (cc/map fold)
                        (future-array))]
-              (-> (all-of futs)
+              (-> (CompletableFuture/allOf fa)
                   (then [_]
-                    (apply f (cc/map deref futs))))))
+                    (apply f (cc/mapv this/deref fa))))))
           coll
           colls)))
 
 
-(defn cancel ^Boolean [^CompletableFuture f]
-  (.cancel f true))
+(defn cancel ^Boolean [f]
+  (when (this/future? f)
+    (.cancel ^CompletableFuture f true)))
 
 
-;; macro
-
-(defn recur [& args]
-  (-> []
-      (into args)
-      (with-meta {::recur? true})))
+(defn cancelled? ^Boolean [f]
+  (when (this/future? f)
+    (.isCancelled ^CompletableFuture f)))
 
 
-#_
 (defmacro recur [& args]
-  `(CompletableFuture/completedFuture (with-meta [~@args] {::recur? true})))
-
-;; completeOnTimeout
-;; orTimeout
+  `(-> [~@args]
+       (with-meta {::recur? true})))
 
 
-;; macro
 (defn recur? [x]
   (some-> x meta ::recur?))
 
@@ -246,7 +251,7 @@
               (function [func# ~result]
                 (cond
 
-                  (recur? ~result)
+                  (this/recur? ~result)
                   (cc/let [~@(reduce
                               (fn [acc [i bind]]
                                 (-> acc
@@ -257,11 +262,11 @@
                     (-> (future ~@body)
                         (.thenComposeAsync func#)))
 
-                  (future? ~result)
+                  (this/future? ~result)
                   (.thenComposeAsync ~(with-meta result {:tag `CompletableFuture}) func#)
 
                   :else
-                  (future-sync ~result)))]
+                  (this/future-sync ~result)))]
 
        (-> (future
              (cc/let [~@bindings]
@@ -269,7 +274,21 @@
            (.thenComposeAsync func#)))))
 
 
-;; -----------
+(defmacro timeout
+  {:style/indent 1}
+  ([f timeout-ms]
+   `(.orTimeout ~f ~timeout-ms TimeUnit/MILLISECONDS))
+  ([f timeout-ms & body]
+   `(cc/let [result# (do ~@body)]
+      (fold
+       (.completeOnTimeout (this/->future ~f)
+                           result#
+                           ~timeout-ms TimeUnit/MILLISECONDS)))))
+
+
+
+;; ---------
+
 
 
 #_
