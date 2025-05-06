@@ -5,16 +5,18 @@
                             for
                             map
                             mapv
-                            ;; deref
+                            deref
                             pvalues
                             loop
                             recur
                             let])
   (:import
+   (java.util.concurrent CompletableFuture
+                         Executors
+                         TimeUnit
+                         TimeoutException)
    (java.util.function Function
-                       Supplier)
-   (java.util.concurrent CompletableFuture)
-   (java.util.concurrent Executors)))
+                       Supplier)))
 
 
 (set! *warn-on-reflection* true)
@@ -53,17 +55,25 @@
   (instance? Throwable x))
 
 
+(defn ->failed ^CompletableFuture [^Throwable e]
+  (CompletableFuture/failedFuture e))
+
+
 (defn ->future ^CompletableFuture [x]
   (cond
-    (future? x)
-    x
+    (future? x) x
+    (throwable? x) (->failed x)
+    :else (future-sync x)))
 
-    (throwable? x)
-    (CompletableFuture/failedFuture x)
 
-    :else
-    (future-sync x)))
+(def ^Function -FUNC-FOLDER
+  (function [this x]
+    (if (future? x)
+      (.thenComposeAsync ^CompletableFuture x this)
+      (future-sync x))))
 
+(defn fold ^CompletableFuture [^CompletableFuture f]
+  (.thenComposeAsync f -FUNC-FOLDER))
 
 (defmacro then
   {:style/indent 1}
@@ -76,16 +86,11 @@
      (.thenComposeAsync (->future ~f) func#)))
 
 
-(defn fold
-  ^CompletableFuture [^CompletableFuture f]
-  (-> f (then [x] x)))
-
-
 (defn then-fn
-  ([f func]
+  (^CompletableFuture [f func]
    (-> f (then [x]
            (func x))))
-  ([f func & args]
+  (^CompletableFuture [f func & args]
    (-> f (then [x]
            (apply func x args)))))
 
@@ -106,17 +111,15 @@
   (cc/map-indexed vector coll))
 
 
-;; deref?
-
-#_
 (defn deref
   ([^CompletableFuture f]
    (-> f fold .get))
 
-  ([^CompletableFuture f ms-timeout ]
-   (-> f fold .get))
-
-  )
+  ([^CompletableFuture f timeout-ms timeout-val]
+   (try
+     (-> f fold (.get timeout-ms TimeUnit/MILLISECONDS))
+     (catch TimeoutException e
+       timeout-val))))
 
 
 (defn future-array
@@ -139,7 +142,6 @@
                                (conj bind)
                                (conj `(-> ~FUTS
                                           (nth ~i)
-                                          (fold)
                                           (deref)))))
                          []
                          (enumerate (cc/map first pairs)))]
@@ -154,9 +156,16 @@
                     `(future ~form))])]
        (-> (CompletableFuture/allOf ~FUTS)
            (then [_#]
-             (cc/mapv (fn [fut#]
-                        (-> fut# fold deref))
-                      ~FUTS))))))
+             (cc/mapv deref ~FUTS))))))
+
+
+#_
+(defn zip-futures ^CompletableFuture [futures]
+  (-> futures
+      (future-array)
+      (all-of)
+      (then [_#]
+        (cc/mapv deref ~FUTS))))
 
 
 (defmacro pvalues [& forms]
@@ -171,52 +180,36 @@
                  (future ~@body)))]
        (-> (CompletableFuture/allOf ~FUTS)
            (then [_#]
-             (cc/mapv (fn [fut#]
-                        (-> fut# fold deref))
-                      ~FUTS))))))
+             (cc/mapv deref ~FUTS))))))
 
 #_
 (f/for [x [1 2 3]]
   (get-user x))
 
 
+(defn all-of ^CompletableFuture [coll]
+  (-> coll
+      future-array
+      (CompletableFuture/allOf)))
+
+
 (defn map
   ([f coll]
    (cc/map (fn [v]
-             (-> v
-                 (->future)
-                 (fold)
-                 (.thenApplyAsync (function [this x]
-                                    (f x)))
-                 (fold)))
+             (then-fn v f))
            coll))
 
-  #_
   ([f coll & colls]
    (apply cc/map
-
           (fn [& vs]
-            (for [v vs]
-              (-> v
-                  (->future)
-                  (fold)
-                  (.thenApplyAsync (function [this x]
-                                     (f x)))
-                  (fold))
-              )
-            #_
-            (->> vs
-                 (cc/map ->future)
-                 (cc/map fold)
-                 ...
-                 (cc/map fold))
-            #_
-            (-> fut
-                (->future)
-                (fold)
-                (.thenApplyAsync (function [this x]
-                                   (f x)))
-                (fold)))
+            (let [futs
+                  (->> vs
+                       (cc/map ->future)
+                       (cc/map fold)
+                       (future-array))]
+              (-> (all-of futs)
+                  (then [_]
+                    (apply f (cc/map deref futs))))))
           coll
           colls)))
 
