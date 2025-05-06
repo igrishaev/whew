@@ -95,7 +95,85 @@
             :foo 42}
            @f)))
 
-  ;; then-fn
-  ;; chain
+  (let [f
+        (-> (core/future 1)
+            (core/then-fn inc)
+            (core/then-fn + 2)
+            (core/then-fn
+             (fn [x]
+               (core/future
+                 (* 10 x))))
+            (core/then-fn
+             (fn [x]
+               (core/future
+                 (core/future
+                   (+ x 3))))))]
+    (is (= 43 @f)))
 
-  )
+  (let [f
+        (-> (core/future 1)
+            (core/chain
+              inc
+              (fn [x]
+                (core/future
+                  (* 10 x)))
+              (fn [x]
+                (core/future
+                  (core/future
+                    (+ x 3))))))]
+    (is (= 23 @f))))
+
+
+(deftest test-let
+  (let [f
+        (core/let [a (core/future 1)
+                   b (core/future
+                       (core/future
+                         (core/future 2)))
+                   c 3]
+          (+ a b c))]
+    (is (core/future? f))
+    (is (= 6 @f)))
+
+  (let [f
+        (core/let [a (core/future 1)
+                   b (core/future
+                       (core/future
+                         (core/future
+                           (/ 0 0))))
+                   c 3]
+          (+ a b c))]
+
+    (try
+      @f
+      (is false)
+      (catch Exception e
+        (is e)))
+
+    (is (core/failed? f))
+
+    (is (= {:message "java.lang.ArithmeticException: Divide by zero"}
+           (-> f
+               (core/catch [e]
+                 {:message (ex-message e)})
+               (deref)))))
+
+  (let [f
+        (core/let [a (core/future 1)]
+          (core/let [b (core/future 2)]
+            (core/let [c (core/future 3)]
+              (+ a b c))))]
+    (is (= 6 @f))))
+
+;; zip
+;; zip-futures
+
+;; for
+;; map
+
+;; cancell
+;; cancelled?
+
+;; loop
+
+;; timeout

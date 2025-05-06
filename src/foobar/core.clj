@@ -88,9 +88,9 @@
   [f [bind] & body]
   `(cc/let [func#
             (function [func# ~bind]
-              (if (future? ~bind)
+              (if (this/future? ~bind)
                 (.thenComposeAsync ~(with-meta bind {:tag `CompletableFuture}) func#)
-                (fold (this/future ~@body))))]
+                (this/fold (this/future ~@body))))]
      (.thenComposeAsync (->future ~f) func#)))
 
 
@@ -103,7 +103,9 @@
            (apply func x args)))))
 
 
-(defmacro chain [f & funcs]
+(defmacro chain
+  {:style/indent 0}
+  [f & funcs]
   `(fold
     (-> (this/->future ~f)
         ~@(cc/for [func funcs]
