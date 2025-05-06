@@ -67,14 +67,14 @@
 
 (defn ->future ^CompletableFuture [x]
   (cond
-    (future? x) x
-    (throwable? x) (->failed x)
-    :else (future-sync x)))
+    (this/future? x) x
+    (this/throwable? x) (this/->failed x)
+    :else (this/future-sync x)))
 
 
 (def ^Function -FUNC-FOLDER
   (function [this x]
-    (if (future? x)
+    (if (this/future? x)
       (.thenComposeAsync ^CompletableFuture x this)
       (future-sync x))))
 
@@ -96,10 +96,10 @@
 
 (defn then-fn
   (^CompletableFuture [f func]
-   (-> f (then [x]
+   (-> f (this/then [x]
            (func x))))
   (^CompletableFuture [f func & args]
-   (-> f (then [x]
+   (-> f (this/then [x]
            (apply func x args)))))
 
 
