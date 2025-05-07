@@ -239,11 +239,105 @@
                (deref))))))
 
 
-;; map
+(deftest test-map
+  (let [futs1
+        (for [x (range 0 3)]
+          ($/future
+            ($/future
+              ($/future x))))
 
-;; cancell
-;; cancelled?
+        futs2
+        ($/map (fn [x]
+                 ($/future
+                   ($/future
+                     ($/future
+                       (inc x)))))
+               futs1)]
 
-;; loop
+    (is (= [1 2 3]
+           (mapv deref futs2))))
+
+  (let [futs1
+        (for [x (reverse (range 0 3))]
+          ($/future
+            ($/future
+              ($/future
+                (/ 1 x)))))
+
+        futs2
+        ($/map (fn [x]
+                 ($/future
+                   ($/future
+                     ($/future
+                       (+ x 100)))))
+               futs1)]
+
+    (is (= [201/2
+            101
+            {:type java.util.concurrent.ExecutionException
+             :error "java.lang.ArithmeticException: Divide by zero"}]
+           (mapv (fn [f]
+                   (try
+                     @f
+                     (catch Throwable e
+                       {:type (type e)
+                        :error (ex-message e)})))
+                 futs2)))))
+
+
+(deftest test-cancel
+  (let [f ($/->future 42)]
+    (is (not ($/cancelled? f))))
+  (is (nil? ($/cancelled? 42))))
+
+
+(deftest test-loop
+  (let [f
+        ($/loop [i 0
+                 acc []]
+          (if (< i 3)
+            ($/recur (inc i) (conj acc i))
+            acc))]
+    (is ($/future? f))
+    (is (= [0 1 2] @f)))
+
+  (let [f
+        ($/loop [i 0
+                 acc []]
+          (if (< i 3)
+            ($/future
+              ($/future
+                ($/recur (inc i) (conj acc i))))
+            acc))]
+    (is ($/future? f))
+    (is (= [0 1 2] @f)))
+
+  (let [f
+        ($/loop [i 0
+                 acc []]
+          (if (< i 3)
+            ($/recur (inc i) (conj acc i))
+            ($/future
+              ($/future
+                ($/future
+                  acc)))))]
+    (is ($/future? f))
+    (is (= [0 1 2] @f)))
+
+  (let [f
+        ($/loop [i 3]
+          (-> ($/future (/ i i))
+              ($/then [_]
+                ($/recur (dec i)))))]
+    (is ($/future? f))
+
+    (is (= {:type java.lang.ArithmeticException
+            :message "Divide by zero"}
+           (-> f
+               ($/catch [e]
+                 {:type (type e)
+                  :message (ex-message e)})
+               (deref))))))
+
 
 ;; timeout
