@@ -1,6 +1,7 @@
 (ns foobar.core-test
   (:import
-   (java.util.concurrent ExecutionException))
+   (java.util.concurrent ExecutionException
+                         Executors))
   (:require
    [clojure.test :refer :all]
    [foobar.core :as $]))
@@ -63,32 +64,59 @@
              (ex-message e))))))
 
 
+(deftest test-catch
+  (let [f
+        (-> ($/future
+              ($/future
+                (/ 0 0)))
+            ($/catch [e]
+              ($/future
+                ($/future
+                  {:type (type e)}))))]
+    (is (= {:type java.lang.ArithmeticException}
+           @f)))
+
+  (let [f
+        (-> ($/future
+              ($/future
+                (/ 0 0)))
+            ($/catch-fn
+              (fn [e a b]
+                {:e (ex-message e)
+                 :a a
+                 :b b})
+              :foo
+              :bar))]
+    (is (= {:e "Divide by zero" :a :foo :b :bar}
+           @f))))
+
+
 (deftest test-chaining
 
   (let [f
         (-> ($/future 1)
             ($/then [x]
-                    (inc x))
+              (inc x))
             ($/then [x]
-                    ($/future (inc x)))
+              ($/future (inc x)))
             ($/then [x]
-                    ($/future ($/future (inc x)))))]
+              ($/future ($/future (inc x)))))]
     (is (= 4 @f)))
 
   (let [f
         (-> ($/future 1)
             ($/then [x]
-                    ($/future (/ x 0)))
+              ($/future (/ x 0)))
             ($/then [x]
-                    ($/future 100500))
+              ($/future 100500))
             ($/catch [e]
+              ($/future
                 ($/future
-                  ($/future
-                    {:type (str (class e))
-                     :message (ex-message e)})))
+                  {:type (str (class e))
+                   :message (ex-message e)})))
             ($/then [m]
-                    ($/future
-                      (assoc m :foo 42))))]
+              ($/future
+                (assoc m :foo 42))))]
 
     (is (= {:type "class java.lang.ArithmeticException"
             :message "Divide by zero"
@@ -113,14 +141,14 @@
   (let [f
         (-> ($/future 1)
             ($/chain
-             inc
-             (fn [x]
-               ($/future
-                 (* 10 x)))
-             (fn [x]
-               ($/future
-                 ($/future
-                   (+ x 3))))))]
+              inc
+              (fn [x]
+                ($/future
+                  (* 10 x)))
+              (fn [x]
+                ($/future
+                  ($/future
+                    (+ x 3))))))]
     (is (= 23 @f))))
 
 
@@ -190,12 +218,12 @@
                   :message (ex-message e)})
                (deref)))))
 
-  (let [f ($/zip-futures 1
-                         ($/future
-                           ($/future
-                             ($/future
-                               (/ 0 0))))
-                         3)]
+  (let [f ($/zip-futures [1
+                          ($/future
+                            ($/future
+                              ($/future
+                                (/ 0 0))))
+                          3])]
     (is ($/future? f))
     (is (= {:type java.lang.ArithmeticException
             :message "Divide by zero"}
@@ -203,11 +231,7 @@
                ($/catch [e]
                  {:type (type e)
                   :message (ex-message e)})
-               (deref)))))
-
-  (let [f ($/zip-futures)]
-    (is ($/future? f))
-    (is (= [] @f))))
+               (deref))))))
 
 
 (deftest test-for
@@ -340,4 +364,46 @@
                (deref))))))
 
 
-;; timeout
+(deftest test-timeout
+
+  (let [f
+        (-> ($/future
+              (Thread/sleep 1000))
+            ($/timeout 100))]
+
+    (try
+      @f
+      (is false)
+      (catch Throwable e
+        (is (= "java.util.concurrent.TimeoutException"
+               (ex-message e)))))
+
+    (is (= {:type java.util.concurrent.TimeoutException}
+           (-> f
+               ($/catch [e]
+                 {:type (type e)})
+               (deref))))
+
+    (let [f
+          (-> ($/future
+                (Thread/sleep 1000))
+              ($/timeout 100
+                (let [a 1 b 2]
+                  ($/future
+                    ($/future
+                      (+ a b))))))]
+      (is (= 3 @f)))))
+
+
+(deftest test-future-via
+  (with-open [executor
+              (Executors/newFixedThreadPool 2)]
+    (let [f ($/future-via [executor]
+              (let [a 1 b 2]
+                (+ a b)))]
+      (is (= 3 @f))
+
+      )
+    )
+
+  )

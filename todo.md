@@ -1,6 +1,5 @@
 
-thenComponse
-future-via
+-to-future proto
 
 bench ns
 tests
@@ -9,10 +8,7 @@ rename
 readme
 release
 
-;; TODO: all-of
-;; TODO: any-of
-(defn zip-futures ^CompletableFuture [& futures]
+all-of
+any-of
 
-;; TODO: check recur number of args
-
-;; catch-fn
+check recur number of args

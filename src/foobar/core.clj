@@ -44,6 +44,19 @@
     (supplier ~@body)))
 
 
+(defmacro future-async [& body]
+  `(CompletableFuture/supplyAsync
+    (supplier ~@body)))
+
+
+(defmacro future-via
+  {:style/indent 1}
+  [[executor] & body]
+  `(CompletableFuture/supplyAsync
+    (supplier ~@body)
+    ~executor))
+
+
 (defmacro future-sync [& body]
   `(CompletableFuture/completedFuture
     (do ~@body)))
@@ -76,12 +89,12 @@
 (def ^Function -FUNC-FOLDER
   (function [this x]
     (if ($/future? x)
-      (.thenComposeAsync ^CompletableFuture x this)
+      (.thenCompose ^CompletableFuture x this)
       (future-sync x))))
 
 
 (defn fold ^CompletableFuture [^CompletableFuture f]
-  (.thenComposeAsync f -FUNC-FOLDER))
+  (.thenCompose f -FUNC-FOLDER))
 
 
 (defmacro then
@@ -90,15 +103,16 @@
   `(cc/let [func#
             (function [func# ~bind]
               (if ($/future? ~bind)
-                (.thenComposeAsync ~(with-meta bind {:tag `CompletableFuture}) func#)
+                (.thenCompose ~(with-meta bind {:tag `CompletableFuture}) func#)
                 ($/fold ($/future ~@body))))]
-     (.thenComposeAsync (->future ~f) func#)))
+     (.thenCompose (->future ~f) func#)))
 
 
 (defn then-fn
+  {:style/indent 0}
   (^CompletableFuture [f func]
    (-> f ($/then [x]
-                 (func x))))
+           (func x))))
   (^CompletableFuture [f func & args]
    (-> f ($/then [x]
                  (apply func x args)))))
@@ -131,7 +145,21 @@
             (function [func# e#]
               (cc/let [~e (e-unwrap e#)]
                 ~@body))]
-     (.exceptionally (->future ~f) func#)))
+     (-> ~f
+         ($/->future)
+         ($/fold)
+         (.exceptionally func#)
+         ($/fold))))
+
+
+(defn catch-fn
+  {:style/indent 0}
+  (^CompletableFuture [f func]
+   (-> f ($/catch [e]
+           (func e))))
+  (^CompletableFuture [f func & args]
+   (-> f ($/catch [e]
+           (apply func e args)))))
 
 
 (defn enumerate [coll]
@@ -198,7 +226,7 @@
                (cc/mapv $/deref ~FUTS)))))))
 
 
-(defn zip-futures ^CompletableFuture [& futures]
+(defn zip-futures ^CompletableFuture [futures]
   (if (empty? futures)
     ($/->future [])
     (cc/let [fa
@@ -275,10 +303,10 @@
                               []
                               (enumerate (cc/map first pairs)))]
                     (-> (future ~@body)
-                        (.thenComposeAsync func#)))
+                        (.thenCompose func#)))
 
                   ($/future? ~result)
-                  (.thenComposeAsync ~(with-meta result {:tag `CompletableFuture}) func#)
+                  (.thenCompose ~(with-meta result {:tag `CompletableFuture}) func#)
 
                   :else
                   ($/future-sync ~result)))]
@@ -286,7 +314,7 @@
        (-> (future
              (cc/let [~@bindings]
                ~@body))
-           (.thenComposeAsync func#)))))
+           (.thenCompose func#)))))
 
 
 (defmacro timeout
