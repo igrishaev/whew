@@ -13,6 +13,7 @@
   (:import
    (java.util.concurrent CompletableFuture
                          CompletionException
+                         ExecutionException
                          Executors
                          TimeUnit
                          TimeoutException)
@@ -23,7 +24,7 @@
 (set! *warn-on-reflection* true)
 
 (alias 'cc 'clojure.core)
-(alias 'this 'foobar.core)
+(alias '$ 'foobar.core)
 
 
 (defmacro supplier ^Supplier [& body]
@@ -67,14 +68,14 @@
 
 (defn ->future ^CompletableFuture [x]
   (cond
-    (this/future? x) x
-    (this/throwable? x) (this/->failed x)
-    :else (this/future-sync x)))
+    ($/future? x) x
+    ($/throwable? x) ($/->failed x)
+    :else ($/future-sync x)))
 
 
 (def ^Function -FUNC-FOLDER
   (function [this x]
-    (if (this/future? x)
+    (if ($/future? x)
       (.thenComposeAsync ^CompletableFuture x this)
       (future-sync x))))
 
@@ -88,39 +89,47 @@
   [f [bind] & body]
   `(cc/let [func#
             (function [func# ~bind]
-              (if (this/future? ~bind)
+              (if ($/future? ~bind)
                 (.thenComposeAsync ~(with-meta bind {:tag `CompletableFuture}) func#)
-                (this/fold (this/future ~@body))))]
+                ($/fold ($/future ~@body))))]
      (.thenComposeAsync (->future ~f) func#)))
 
 
 (defn then-fn
   (^CompletableFuture [f func]
-   (-> f (this/then [x]
-           (func x))))
+   (-> f ($/then [x]
+                 (func x))))
   (^CompletableFuture [f func & args]
-   (-> f (this/then [x]
-           (apply func x args)))))
+   (-> f ($/then [x]
+                 (apply func x args)))))
 
 
 (defmacro chain
   {:style/indent 0}
   [f & funcs]
   `(fold
-    (-> (this/->future ~f)
+    (-> ($/->future ~f)
         ~@(cc/for [func funcs]
             `(then-fn ~func)))))
 
+
+(defn e-unwrap ^Throwable [^Throwable e]
+  (cond
+
+    (instance? CompletionException e)
+    (recur (ex-cause e))
+
+    (instance? ExecutionException e)
+    (recur (ex-cause e))
+
+    :else e))
 
 (defmacro catch
   {:style/indent 1}
   [f [e] & body]
   `(cc/let [func#
             (function [func# e#]
-              (cc/let [~e
-                       (if (instance? CompletionException e#)
-                         (ex-cause e#)
-                         e#)]
+              (cc/let [~e (e-unwrap e#)]
                 ~@body))]
      (.exceptionally (->future ~f) func#)))
 
@@ -137,7 +146,7 @@
    (try
      (-> f fold (.get timeout-ms TimeUnit/MILLISECONDS))
      (catch TimeoutException e
-       timeout-val))))
+            timeout-val))))
 
 
 (def ^Class ^:const FUT_ARR_CLASS
@@ -161,7 +170,7 @@
     `(cc/let [~FUTS
               (future-array
                [~@(cc/for [form (cc/map second pairs)]
-                    `(future ~form))])]
+                    `($/future ~form))])]
        (-> (CompletableFuture/allOf ~FUTS)
            (then [_#]
              (cc/let [~@(reduce
@@ -170,31 +179,35 @@
                                (conj bind)
                                (conj `(-> ~FUTS
                                           (nth ~i)
-                                          (this/deref)))))
+                                          ($/deref)))))
                          []
                          (enumerate (cc/map first pairs)))]
                ~@body))))))
 
 
 (defmacro zip [& forms]
-  (cc/let [FUTS (gensym "FUTS")]
-    `(cc/let [~FUTS
-              (future-array
-               [~@(cc/for [form forms]
-                    `(future ~form))])]
-       (-> (CompletableFuture/allOf ~FUTS)
-           (then [_#]
-             (cc/mapv this/deref ~FUTS))))))
+  (if (empty? forms)
+    `($/->future [])
+    (cc/let [FUTS (gensym "FUTS")]
+      `(cc/let [~FUTS
+                (future-array
+                 [~@(cc/for [form forms]
+                      `(future ~form))])]
+         (-> (CompletableFuture/allOf ~FUTS)
+             (then [_#]
+               (cc/mapv $/deref ~FUTS)))))))
 
 
-(defn zip-futures ^CompletableFuture [futures]
-  (cc/let [fa
-           (->> futures
-                (cc/map this/->future)
-                (this/future-array))]
-    (-> (CompletableFuture/allOf fa)
-        (then [_]
-          (cc/mapv this/deref fa)))))
+(defn zip-futures ^CompletableFuture [& futures]
+  (if (empty? futures)
+    ($/->future [])
+    (cc/let [fa
+             (->> futures
+                  (cc/map $/->future)
+                  ($/future-array))]
+      (-> (CompletableFuture/allOf fa)
+          (then [_]
+            (cc/mapv $/deref fa))))))
 
 
 (defmacro for [bindings & body]
@@ -222,18 +235,18 @@
                        (future-array))]
               (-> (CompletableFuture/allOf fa)
                   (then [_]
-                    (apply f (cc/mapv this/deref fa))))))
+                    (apply f (cc/mapv $/deref fa))))))
           coll
           colls)))
 
 
 (defn cancel ^Boolean [f]
-  (when (this/future? f)
+  (when ($/future? f)
     (.cancel ^CompletableFuture f true)))
 
 
 (defn cancelled? ^Boolean [f]
-  (when (this/future? f)
+  (when ($/future? f)
     (.isCancelled ^CompletableFuture f)))
 
 
@@ -253,7 +266,7 @@
               (function [func# ~result]
                 (cond
 
-                  (this/recur? ~result)
+                  ($/recur? ~result)
                   (cc/let [~@(reduce
                               (fn [acc [i bind]]
                                 (-> acc
@@ -264,11 +277,11 @@
                     (-> (future ~@body)
                         (.thenComposeAsync func#)))
 
-                  (this/future? ~result)
+                  ($/future? ~result)
                   (.thenComposeAsync ~(with-meta result {:tag `CompletableFuture}) func#)
 
                   :else
-                  (this/future-sync ~result)))]
+                  ($/future-sync ~result)))]
 
        (-> (future
              (cc/let [~@bindings]
@@ -283,7 +296,7 @@
   ([f timeout-ms & body]
    `(cc/let [result# (do ~@body)]
       (fold
-       (.completeOnTimeout (this/->future ~f)
+       (.completeOnTimeout ($/->future ~f)
                            result#
                            ~timeout-ms TimeUnit/MILLISECONDS)))))
 

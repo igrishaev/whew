@@ -3,33 +3,33 @@
    (java.util.concurrent ExecutionException))
   (:require
    [clojure.test :refer :all]
-   [foobar.core :as core]))
+   [foobar.core :as $]))
 
 (deftest test-future-ok
 
-  (let [f (core/future
+  (let [f ($/future
             (let [a 1 b 2]
               (+ a b)))]
 
     (is (= 3 @f))
-    (is (core/future? f))
-    (is (not (core/future? 42)))
+    (is ($/future? f))
+    (is (not ($/future? 42)))
 
-    (is (core/future? (core/->future 1)))
-    (is (core/future? (core/->future
-                       (core/future 1))))
+    (is ($/future? ($/->future 1)))
+    (is ($/future? ($/->future
+                    ($/future 1))))
 
     (is (= 1
            (-> 1
-               (core/->future)
-               (core/->future)
-               (core/->future)
-               (core/->future)
+               ($/->future)
+               ($/->future)
+               ($/->future)
+               ($/->future)
                (deref)))))
 
-  (let [f (core/->future (ex-info "boom" {}))]
-    (is (core/future? f))
-    (is (core/failed? f))
+  (let [f ($/->future (ex-info "boom" {}))]
+    (is ($/future? f))
+    (is ($/failed? f))
     (try
       @f
       (is false)
@@ -38,7 +38,7 @@
         (is (= "clojure.lang.ExceptionInfo: boom {}"
                (ex-message e))))))
 
-  (let [f (core/->failed (ex-info "boom" {}))]
+  (let [f ($/->failed (ex-info "boom" {}))]
     (try
       @f
       (is false)
@@ -47,16 +47,16 @@
         (is (= "clojure.lang.ExceptionInfo: boom {}"
                (ex-message e))))))
 
-  (let [f (core/future
+  (let [f ($/future
             (let [a 1 b 2]
               (/ (+ a b) 0)))]
-    (is (core/future? f))
-    (is (core/failed? f)))
+    (is ($/future? f))
+    (is ($/failed? f)))
 
   (try
-    (core/future-sync
-      (let [a 1 b 2]
-        (/ (+ a b) 0)))
+    ($/future-sync
+     (let [a 1 b 2]
+       (/ (+ a b) 0)))
     (is false)
     (catch ArithmeticException e
       (is (= "Divide by zero"
@@ -66,29 +66,29 @@
 (deftest test-chaining
 
   (let [f
-        (-> (core/future 1)
-            (core/then [x]
-              (inc x))
-            (core/then [x]
-              (core/future (inc x)))
-            (core/then [x]
-              (core/future (core/future (inc x)))))]
+        (-> ($/future 1)
+            ($/then [x]
+                    (inc x))
+            ($/then [x]
+                    ($/future (inc x)))
+            ($/then [x]
+                    ($/future ($/future (inc x)))))]
     (is (= 4 @f)))
 
   (let [f
-        (-> (core/future 1)
-            (core/then [x]
-              (core/future (/ x 0)))
-            (core/then [x]
-              (core/future 100500))
-            (core/catch [e]
-              (core/future
-                (core/future
-                  {:type (str (class e))
-                   :message (ex-message e)})))
-            (core/then [m]
-              (core/future
-                (assoc m :foo 42))))]
+        (-> ($/future 1)
+            ($/then [x]
+                    ($/future (/ x 0)))
+            ($/then [x]
+                    ($/future 100500))
+            ($/catch [e]
+                ($/future
+                  ($/future
+                    {:type (str (class e))
+                     :message (ex-message e)})))
+            ($/then [m]
+                    ($/future
+                      (assoc m :foo 42))))]
 
     (is (= {:type "class java.lang.ArithmeticException"
             :message "Divide by zero"
@@ -96,52 +96,52 @@
            @f)))
 
   (let [f
-        (-> (core/future 1)
-            (core/then-fn inc)
-            (core/then-fn + 2)
-            (core/then-fn
+        (-> ($/future 1)
+            ($/then-fn inc)
+            ($/then-fn + 2)
+            ($/then-fn
              (fn [x]
-               (core/future
+               ($/future
                  (* 10 x))))
-            (core/then-fn
+            ($/then-fn
              (fn [x]
-               (core/future
-                 (core/future
+               ($/future
+                 ($/future
                    (+ x 3))))))]
     (is (= 43 @f)))
 
   (let [f
-        (-> (core/future 1)
-            (core/chain
-              inc
-              (fn [x]
-                (core/future
-                  (* 10 x)))
-              (fn [x]
-                (core/future
-                  (core/future
-                    (+ x 3))))))]
+        (-> ($/future 1)
+            ($/chain
+             inc
+             (fn [x]
+               ($/future
+                 (* 10 x)))
+             (fn [x]
+               ($/future
+                 ($/future
+                   (+ x 3))))))]
     (is (= 23 @f))))
 
 
 (deftest test-let
   (let [f
-        (core/let [a (core/future 1)
-                   b (core/future
-                       (core/future
-                         (core/future 2)))
-                   c 3]
+        ($/let [a ($/future 1)
+                b ($/future
+                    ($/future
+                      ($/future 2)))
+                c 3]
           (+ a b c))]
-    (is (core/future? f))
+    (is ($/future? f))
     (is (= 6 @f)))
 
   (let [f
-        (core/let [a (core/future 1)
-                   b (core/future
-                       (core/future
-                         (core/future
-                           (/ 0 0))))
-                   c 3]
+        ($/let [a ($/future 1)
+                b ($/future
+                    ($/future
+                      ($/future
+                        (/ 0 0))))
+                c 3]
           (+ a b c))]
 
     (try
@@ -150,25 +150,95 @@
       (catch Exception e
         (is e)))
 
-    (is (core/failed? f))
+    (is ($/failed? f))
 
     (is (= {:message "java.lang.ArithmeticException: Divide by zero"}
            (-> f
-               (core/catch [e]
-                 {:message (ex-message e)})
+               ($/catch [e]
+                   {:message (ex-message e)})
                (deref)))))
 
   (let [f
-        (core/let [a (core/future 1)]
-          (core/let [b (core/future 2)]
-            (core/let [c (core/future 3)]
+        ($/let [a ($/future 1)]
+          ($/let [b ($/future 2)]
+            ($/let [c ($/future 3)]
               (+ a b c))))]
     (is (= 6 @f))))
 
-;; zip
-;; zip-futures
 
-;; for
+(deftest test-zip
+  (let [f ($/zip 1 ($/future
+                     ($/future
+                       ($/future 2))) 3)]
+    (is ($/future? f))
+    (is (= [1 2 3] @f)))
+
+  (let [f ($/zip)]
+    (is ($/future? f))
+    (is (= [] @f)))
+
+  (let [f ($/zip 1 ($/future
+                     ($/future
+                       ($/future
+                         (/ 0 0)))) 3)]
+    (is ($/future? f))
+    (is (= {:type java.lang.ArithmeticException
+            :message "Divide by zero"}
+           (-> f
+               ($/catch [e]
+                 {:type (type e)
+                  :message (ex-message e)})
+               (deref)))))
+
+  (let [f ($/zip-futures 1
+                         ($/future
+                           ($/future
+                             ($/future
+                               (/ 0 0))))
+                         3)]
+    (is ($/future? f))
+    (is (= {:type java.lang.ArithmeticException
+            :message "Divide by zero"}
+           (-> f
+               ($/catch [e]
+                 {:type (type e)
+                  :message (ex-message e)})
+               (deref)))))
+
+  (let [f ($/zip-futures)]
+    (is ($/future? f))
+    (is (= [] @f))))
+
+
+(deftest test-for
+
+  (let [f
+        ($/for [a (range 0 3)
+                b (range 6 9)
+                :when
+                (and (not= a 2) (not= b 7))]
+          ($/future
+            ($/future
+              {:a a :b b})))]
+
+    (is (= [{:a 0 :b 6} {:a 0 :b 8} {:a 1 :b 6} {:a 1 :b 8}]
+           @f)))
+
+  (let [f
+        ($/for [a (reverse (range 0 3))]
+          ($/future
+            ($/future
+              (/ a a))))]
+
+    (is (= {:type java.lang.ArithmeticException
+            :message "Divide by zero"}
+           (-> f
+               ($/catch [e]
+                 {:type (type e)
+                  :message (ex-message e)})
+               (deref))))))
+
+
 ;; map
 
 ;; cancell
