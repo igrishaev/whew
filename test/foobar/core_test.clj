@@ -3,7 +3,7 @@
    (java.util.concurrent ExecutionException
                          Executors))
   (:require
-   [clojure.test :refer :all]
+   [clojure.test :refer [deftest is]]
    [foobar.core :as $]))
 
 (deftest test-future-ok
@@ -56,8 +56,8 @@
 
   (try
     ($/future-sync
-     (let [a 1 b 2]
-       (/ (+ a b) 0)))
+      (let [a 1 b 2]
+        (/ (+ a b) 0)))
     (is false)
     (catch ArithmeticException e
       (is (= "Divide by zero"
@@ -138,14 +138,14 @@
             ($/then-fn inc)
             ($/then-fn + 2)
             ($/then-fn
-             (fn [x]
-               ($/future
-                 (* 10 x))))
+              (fn [x]
+                ($/future
+                  (* 10 x))))
             ($/then-fn
-             (fn [x]
-               ($/future
-                 ($/future
-                   (+ x 3))))))]
+              (fn [x]
+                ($/future
+                  ($/future
+                    (+ x 3))))))]
     (is (= 43 @f)))
 
   (let [f
@@ -190,10 +190,10 @@
 
     (is ($/failed? f))
 
-    (is (= {:message "java.lang.ArithmeticException: Divide by zero"}
+    (is (= {:message "Divide by zero"}
            (-> f
                ($/catch [e]
-                   {:message (ex-message e)})
+                 {:message (ex-message e)})
                (deref)))))
 
   (let [f
@@ -226,14 +226,28 @@
                ($/catch [e]
                  {:type (type e)
                   :message (ex-message e)})
-               (deref)))))
+               (deref))))))
 
-  (let [f ($/zip-futures [1
-                          ($/future
-                            ($/future
-                              ($/future
-                                (/ 0 0))))
-                          3])]
+
+(deftest test-all-of
+  (let [f ($/all-of [1
+                     ($/future
+                       ($/future
+                         ($/future
+                           2)))
+                     3])]
+    (is ($/future? f))
+    (is (= [1 2 3] @f)))
+
+  (let [f ($/all-of [])]
+    (is (= [] @f)))
+
+  (let [f ($/all-of [1
+                     ($/future
+                       ($/future
+                         ($/future
+                           (/ 0 0))))
+                     3])]
     (is ($/future? f))
     (is (= {:type java.lang.ArithmeticException
             :message "Divide by zero"}
@@ -241,6 +255,42 @@
                ($/catch [e]
                  {:type (type e)
                   :message (ex-message e)})
+               (deref))))))
+
+
+(deftest test-any-of
+  (let [f ($/any-of [($/future
+                       (Thread/sleep 300)
+                       :A)
+                     ($/future
+                       (Thread/sleep 200)
+                       :B)
+                     ($/future
+                       (Thread/sleep 100)
+                       :C)])]
+    (is ($/future? f))
+    (is (= :C @f)))
+
+  (let [f ($/any-of [($/future
+                       (Thread/sleep 300)
+                       :A)
+                     :B])]
+    (is (= :B @f)))
+
+  (let [f ($/any-of [($/future
+                       (Thread/sleep 300)
+                       :A)
+                     ($/future
+                       (Thread/sleep 200)
+                       :B)
+                     ($/future
+                       (Thread/sleep 100)
+                       (/ 0 0)
+                       :C)])]
+    (is ($/future? f))
+    (is (= "Divide by zero"
+           (-> f
+               ($/catch-fn ex-message)
                (deref))))))
 
 
@@ -424,9 +474,4 @@
     (let [f ($/future-via [executor]
               (let [a 1 b 2]
                 (+ a b)))]
-      (is (= 3 @f))
-
-      )
-    )
-
-  )
+      (is (= 3 @f)))))

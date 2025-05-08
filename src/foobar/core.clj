@@ -14,7 +14,6 @@
    (java.util.concurrent CompletableFuture
                          CompletionException
                          ExecutionException
-                         Executors
                          TimeUnit
                          TimeoutException)
    (java.util.function Function
@@ -79,11 +78,31 @@
     (.isCompletedExceptionally ^CompletableFuture f)))
 
 
+(defprotocol IFuture
+  (-to-future [x]))
+
+
+(extend-protocol IFuture
+
+  nil
+  (-to-future [_]
+    (future-sync nil))
+
+  Object
+  (-to-future [this]
+    (future-sync this))
+
+  CompletableFuture
+  (-to-future [this]
+    this)
+
+  Throwable
+  (-to-future [this]
+    (CompletableFuture/failedFuture this)))
+
+
 (defn ->future ^CompletableFuture [x]
-  (cond
-    ($/future? x) x
-    ($/throwable? x) ($/->failed x)
-    :else ($/future-sync x)))
+  (-to-future x))
 
 
 (def ^Function -FUNC-FOLDER
@@ -173,8 +192,8 @@
   ([^CompletableFuture f timeout-ms timeout-val]
    (try
      (-> f fold (.get timeout-ms TimeUnit/MILLISECONDS))
-     (catch TimeoutException e
-            timeout-val))))
+     (catch TimeoutException _
+       timeout-val))))
 
 
 (def ^Class ^:const FUT_ARR_CLASS
@@ -226,7 +245,7 @@
                (cc/mapv $/deref ~FUTS)))))))
 
 
-(defn zip-futures ^CompletableFuture [futures]
+(defn all-of ^CompletableFuture [futures]
   (if (empty? futures)
     ($/->future [])
     (cc/let [fa
@@ -236,6 +255,17 @@
       (-> (CompletableFuture/allOf fa)
           (then [_]
             (cc/mapv $/deref fa))))))
+
+
+(defn any-of ^CompletableFuture [futures]
+  (if (empty? futures)
+    (->future nil)
+    (cc/let [fa
+             (->> futures
+                  (cc/map $/->future)
+                  ($/future-array))]
+      (-> (CompletableFuture/anyOf fa)
+          (fold)))))
 
 
 (defmacro for [bindings & body]

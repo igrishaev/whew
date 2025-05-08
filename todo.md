@@ -1,12 +1,9 @@
 
--to-future proto
+complete/deliver?
+delivered?
 
-bench ns
-tests
-docstrings
 rename
+docstrings
 readme
 release
-
-all-of
-any-of
+dev/bench ns
