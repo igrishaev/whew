@@ -64,6 +64,16 @@
              (ex-message e))))))
 
 
+(deftest test-deref
+  (let [f ($/future ($/future ($/future 42)))]
+    (is (future? (deref f)))
+    (is (int? ($/deref f))))
+
+  (let [f ($/future ($/future ($/future (Thread/sleep 1000))))]
+    (is (= ::too-long
+           ($/deref f 50 ::too-long)))))
+
+
 (deftest test-catch
   (let [f
         (-> ($/future
@@ -324,6 +334,19 @@
             acc))]
     (is ($/future? f))
     (is (= [0 1 2] @f)))
+
+
+  (let [f
+        ($/loop [i 0
+                 acc []]
+          (if (< i 3)
+            ($/recur (inc i) (conj acc i) :dunno)
+            acc))]
+    (is ($/future? f))
+    (is (= "wrong number or arguments to recur: expected 2 but got 3"
+           (-> f
+               ($/catch-fn ex-message)
+               (deref)))))
 
   (let [f
         ($/loop [i 0

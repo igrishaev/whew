@@ -10,5 +10,3 @@ release
 
 all-of
 any-of
-
-check recur number of args

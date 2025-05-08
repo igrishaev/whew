@@ -287,23 +287,35 @@
   (some-> x meta ::recur?))
 
 
+(defmacro throw!
+  ([message]
+   `(throw (new RuntimeException ~message)))
+  ([message & args]
+   `(throw! (format ~message ~@args))))
+
+
 (defmacro loop [bindings & body]
   (cc/let [result (gensym "result")
-           pairs (partition 2 bindings)]
+           pairs (partition 2 bindings)
+           amount (count pairs)]
     `(cc/let [func#
               (function [func# ~result]
                 (cond
 
                   ($/recur? ~result)
-                  (cc/let [~@(reduce
-                              (fn [acc [i bind]]
-                                (-> acc
-                                    (conj bind)
-                                    (conj `(nth ~result ~i))))
-                              []
-                              (enumerate (cc/map first pairs)))]
-                    (-> (future ~@body)
-                        (.thenCompose func#)))
+                  (cc/let [amount# (count ~result)]
+                    (when-not (= ~amount amount#)
+                      ($/throw! "wrong number or arguments to recur: expected %s but got %s"
+                                ~amount amount#))
+                    (cc/let [~@(reduce
+                                (fn [acc [i bind]]
+                                  (-> acc
+                                      (conj bind)
+                                      (conj `(nth ~result ~i))))
+                                []
+                                (enumerate (cc/map first pairs)))]
+                      (-> (future ~@body)
+                          (.thenCompose func#))))
 
                   ($/future? ~result)
                   (.thenCompose ~(with-meta result {:tag `CompletableFuture}) func#)
