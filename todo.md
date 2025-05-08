@@ -2,7 +2,7 @@
 complete/deliver?
 delivered?
 
-rename
+project.clj, makefile
 docstrings
 readme
 release

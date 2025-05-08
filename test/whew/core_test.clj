@@ -1,10 +1,10 @@
-(ns foobar.core-test
+(ns whew.core-test
   (:import
    (java.util.concurrent ExecutionException
                          Executors))
   (:require
    [clojure.test :refer [deftest is]]
-   [foobar.core :as $]))
+   [whew.core :as $]))
 
 (deftest test-future-ok
 

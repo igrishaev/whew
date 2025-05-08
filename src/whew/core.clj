@@ -1,4 +1,4 @@
-(ns foobar.core
+(ns whew.core
   (:refer-clojure :exclude [future
                             future?
                             catch
@@ -23,7 +23,7 @@
 (set! *warn-on-reflection* true)
 
 (alias 'cc 'clojure.core)
-(alias '$ 'foobar.core)
+(alias '$ 'whew.core)
 
 
 (defmacro supplier ^Supplier [& body]
