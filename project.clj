@@ -1,21 +1,44 @@
 (defproject com.github.igrishaev/whew "0.1.0-SNAPSHOT"
 
   :description
-  "FIXME: write description"
+  "Try to tame CompletableFuture"
 
   :url
-  "http://example.com/FIXME"
+  "https://github.com/igrishaev/whew"
 
   :license
-  {:name "EPL-2.0 OR GPL-2.0-or-later WITH Classpath-exception-2.0"
-   :url "https://www.eclipse.org/legal/epl-2.0/"}
+  {:name "The Unlicense"
+   :url "https://unlicense.org/"}
 
-  :dependencies
+  :deploy-repositories
+  {"releases"
+   {:url "https://repo.clojars.org"
+    :creds :gpg}
+   "snapshots"
+   {:url "https://repo.clojars.org"
+    :creds :gpg}}
+
+  :managed-dependencies
   [[org.clojure/clojure "1.11.1"]
    [manifold "0.4.3"]
    [cc.qbits/auspex "1.0.3"]]
 
+  :dependencies
+  [[org.clojure/clojure :scope "provided"]]
+
+  :release-tasks
+  [["vcs" "assert-committed"]
+   ["test"]
+   ["change" "version" "leiningen.release/bump-version" "release"]
+   ["vcs" "commit"]
+   ["vcs" "tag" "--no-sign"]
+   ["deploy"]
+   ["change" "version" "leiningen.release/bump-version"]
+   ["vcs" "commit"]
+   ["vcs" "push"]]
+
   :profiles
-  {:uberjar
-   {:aot :all
-    :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}})
+  {:dev
+   {:global-vars
+    {*warn-on-reflection* true
+     *assert* true}}})
