@@ -39,7 +39,7 @@
         (is (= "clojure.lang.ExceptionInfo: boom {}"
                (ex-message e))))))
 
-  (let [f ($/->failed (ex-info "boom" {}))]
+  (let [f ($/->future (ex-info "boom" {}))]
     (try
       @f
       (is false)
