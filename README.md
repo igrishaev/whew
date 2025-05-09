@@ -1,44 +1,55 @@
-# foobar
+# Whew
 
-FIXME: description
+A zero-deps library that wraps Java's `CompletableFuture` class. Provides
+functions and macros for passing futures through handlers, looping over them,
+mapping and so on. Deals with nested futures (when a future returns a future and
+so on).
+
+[manifold]: https://github.com/clj-commons/manifold
+[auspex]: https://github.com/mpenet/auspex
+
+One might thing about this library as yet another clone of [Manifold][manifold]
+or [Auspex][auspex]. But the API is a bit different and handles some corner
+cases.
 
 ## Installation
 
-Download from http://example.com/FIXME.
+Requires Java version at least 8. Add a dependency:
+
+~~~clojure
+;; lein
+[com.github.igrishaev/whew "0.1.0"]
+
+;; deps
+com.github.igrishaev/whew {:mvn/version "0.1.0"}
+~~~
 
 ## Usage
 
-FIXME: explanation
+Import the library:
 
-    $ java -jar foobar-0.1.0-standalone.jar [args]
+~~~clojure
+(ns org.some.project
+  (:require
+    [whew.core :as $]))
+~~~
 
-## Options
+It provides plenty of functions and macros named after their Clojure
+counterparts, e.g. `map`, `future`, `loop`, etc. Thus, never `:use` this library
+but `:require` it using an alias. Here and below we will use `$`. A quick demo:
 
-FIXME: listing of options this app accepts.
 
-## Examples
 
-...
+## In Detail
 
-### Bugs
 
-...
 
-### Any Other Sections
-### That You Think
-### Might be Useful
 
-## License
 
-Copyright © 2025 FIXME
 
-This program and the accompanying materials are made available under the
-terms of the Eclipse Public License 2.0 which is available at
-http://www.eclipse.org/legal/epl-2.0.
 
-This Source Code may also be made available under the following Secondary
-Licenses when the conditions for such availability set forth in the Eclipse
-Public License, v. 2.0 are satisfied: GNU General Public License as published by
-the Free Software Foundation, either version 2 of the License, or (at your
-option) any later version, with the GNU Classpath Exception which is available
-at https://www.gnu.org/software/classpath/license.html.
+~~~
+©©©©©©©©©©©©©©©©©©©©©©©©©©©©©©©©©©
+Ivan Grishaev, 2025. © UNLICENSE ©
+©©©©©©©©©©©©©©©©©©©©©©©©©©©©©©©©©©
+~~~
