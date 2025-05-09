@@ -38,13 +38,42 @@ It provides plenty of functions and macros named after their Clojure
 counterparts, e.g. `map`, `future`, `loop`, etc. Thus, never `:use` this library
 but `:require` it using an alias. Here and below we will use `$`. A quick demo:
 
+~~~clojure
+(defn get-json [code]
+  (-> (format "https://http.dog/%d.json" code)
+      (http/get {:as :json})
+      :body))
 
+(def -f ($/future
+          (get-json 101)))
+~~~
+
+~~~clojure
+@-f
+
+{:image
+ {:avif "https://http.dog/101.avif"
+  :jpg "https://http.dog/101.jpg"
+  :jxl "https://http.dog/101.jxl"
+  :webp "https://http.dog/101.webp"}
+ :status_code 101
+ :title "Switching Protocols"
+ :url "https://http.dog/101"}
+~~~
+
+~~~clojure
+(-> -f
+    ($/then [data]
+      (-> data :image :jpg))
+    ($/then [url]
+      [:a {:src url}
+       "Click me!"])
+    (deref))
+
+[:a {:src "https://http.dog/101.jpg"} "Click me!"]
+~~~
 
 ## In Detail
-
-
-
-
 
 
 
