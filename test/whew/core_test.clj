@@ -385,6 +385,19 @@
     (is ($/future? f))
     (is (= [0 1 2] @f)))
 
+  (let [f
+        ($/loop [i 0
+                 acc []]
+          (if (< i 3)
+            ($/recur (inc i)
+                     ($/future
+                       ($/future
+                         (conj acc i))))
+            ($/future
+              ($/future
+                acc))))]
+    (is ($/future? f))
+    (is (= [0 1 2] @f)))
 
   (let [f
         ($/loop [i 0
@@ -475,3 +488,83 @@
               (let [a 1 b 2]
                 (+ a b)))]
       (is (= 3 @f)))))
+
+
+(deftest test-handle
+  (let [f
+        (-> ($/future 42)
+            ($/handle [r e]
+              (if e
+                ($/future
+                  ($/future
+                    {:type (class e)}))
+                ($/future
+                  ($/future
+                    (inc r))))))]
+
+    (is (= 43 @f)))
+
+  (let [f
+        (-> ($/future
+              ($/future
+                ($/future 42)))
+            ($/handle [r e]
+              (inc r)))]
+    (is (= 43 @f)))
+
+  (let [f
+        (-> ($/future
+              ($/future
+                (/ 0 0)))
+            ($/handle [r e]
+              {:type (class e)}))]
+    (is (= {:type java.lang.ArithmeticException}
+           @f)))
+
+  (let [f
+        (-> ($/future
+              ($/future 1))
+            ($/handle [r e]
+              (/ 0 0)))]
+    (is (= {:type java.lang.ArithmeticException}
+           (-> f
+               ($/catch [e]
+                 {:type (class e)})
+               (deref)))))
+
+  (let [f
+        (-> ($/future
+              ($/future
+                (/ 0 0)))
+            ($/handle [r e]
+              e))]
+    (is (= java.lang.ArithmeticException
+           (type @f))))
+
+  (let [f
+        (-> ($/future 42)
+            ($/handle-fn
+              (fn [r e]
+                (if e
+                  ($/future
+                    ($/future
+                      {:type (class e)}))
+                  ($/future
+                    ($/future
+                      (inc r)))))))]
+    (is (= 43 @f)))
+
+  (let [f
+        (-> ($/future
+              (/ 0 0))
+            ($/handle-fn
+              (fn [r e]
+                (if e
+                  ($/future
+                    ($/future
+                      {:type (class e)}))
+                  ($/future
+                    ($/future
+                      (inc r)))))))]
+    (is (= {:type java.lang.ArithmeticException}
+           @f))))

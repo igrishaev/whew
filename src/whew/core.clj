@@ -20,6 +20,8 @@
                          TimeUnit
                          TimeoutException)
    (java.util.function Function
+                       BiConsumer
+                       BiFunction
                        Supplier)))
 
 
@@ -27,6 +29,20 @@
 
 (alias 'cc 'clojure.core)
 (alias '$ 'whew.core)
+
+
+(defmacro biconsumer
+  ^BiConsumer [[a b] & body]
+  `(reify BiConsumer
+     (accept [this# ~a ~b]
+       ~@body)))
+
+
+(defmacro bifunction
+  ^BiFunction [[a b] & body]
+  `(reify BiFunction
+     (apply [this# ~a ~b]
+       ~@body)))
 
 
 (defmacro supplier
@@ -165,6 +181,44 @@
   "
   ^CompletableFuture [^CompletableFuture f]
   (.thenCompose f -FUNC-FOLDER))
+
+
+(defmacro handle
+  "
+  Handles both a result and a possible exception in place.
+  - r is bound to a result, or nil;
+  - e is bount to an exception, or nil;
+  - body is an arbitrary block of code that checks if
+    e is nil and produces either a value, a future or
+    throws an exception.
+
+  @(-> (future 42)
+       (handle [r e]
+         (if e
+           {:error (ex-message e)}
+           (future (inc r)))))
+  43
+
+  Returns a new future.
+  "
+  {:style/indent 1}
+  ^CompletableFuture [f [r e] & body]
+  `($/fold
+    (.handle ($/fold (->future ~f))
+             (bifunction [~r ~e]
+               (cc/let [~e (some-> ~e e-unwrap)]
+                 ~@body)))))
+
+
+(defmacro handle-fn
+  "
+  Like `handle` but accepts 2-arity function with
+  a result and an exception. Returns a new future.
+  "
+  {:style/indent 0}
+  ^CompletableFuture [f func]
+  `(handle ~f [r# e#]
+           (~func r# e#)))
 
 
 (defmacro then
@@ -451,7 +505,17 @@
 
 (defn map
   "
-  Like `map` but...
+  Like `map` but works with collection(s) of futures.
+  Any value of a collection might be a future. The `f`
+  function gets applied with `then-fn`. It might produce
+  a future as well.
+
+  Can accept multiple collections; arity of the  `f` function
+  should match the number of collections. Every nth future
+  is taken from collections, and one all of them are ready,
+  plain values are passed into a function.
+
+  Return a lazy collection of futures.
   "
   ([f coll]
    (cc/map (fn [v]
@@ -472,17 +536,29 @@
           colls)))
 
 
-(defn cancel ^Boolean [f]
+(defn cancel
+  "
+  Try to cancel a given future.
+  "
+  ^Boolean [f]
   (when ($/future? f)
     (.cancel ^CompletableFuture f true)))
 
 
-(defn cancelled? ^Boolean [f]
+(defn cancelled?
+  "
+  Check if a future has been canceled.
+  "
+  ^Boolean [f]
   (when ($/future? f)
     (.isCancelled ^CompletableFuture f)))
 
 
-(defmacro recur [& args]
+(defmacro recur
+  "
+  A special value for loop (see below).
+  "
+  [& args]
   `(-> [~@args]
        (with-meta {::recur? true})))
 
@@ -498,7 +574,30 @@
    `(throw! (format ~message ~@args))))
 
 
-(defmacro loop [bindings & body]
+(defmacro loop
+  "
+  Like `loop` but produces a future that produces
+  a fututure that produces... and so on. Key features:
+
+  - return a future with a handler that calls itself
+    recursively;
+  - binding values can be futures as well;
+  - for recur, there is a special macro with the same
+    naem (don't mix it with the standard recur).
+
+  @(loop [i 0
+            acc []]
+     (if (< i 3)
+       (recur (inc i)
+                (future
+                  (future
+                    (conj acc i))))
+       (future
+         (future
+           acc))))
+  [1 2 3]
+  "
+  [bindings & body]
   (cc/let [result (gensym "result")
            pairs (partition 2 bindings)
            amount (count pairs)]
@@ -511,15 +610,16 @@
                     (when-not (= ~amount amount#)
                       ($/throw! "wrong number or arguments to recur: expected %s but got %s"
                                 ~amount amount#))
-                    (cc/let [~@(reduce
-                                (fn [acc [i bind]]
-                                  (-> acc
-                                      (conj bind)
-                                      (conj `(nth ~result ~i))))
-                                []
-                                (enumerate (cc/map first pairs)))]
-                      (-> (future ~@body)
-                          (.thenCompose func#))))
+
+                    (-> ($/let [~@(reduce
+                                   (fn [acc [i bind]]
+                                     (-> acc
+                                         (conj bind)
+                                         (conj `(nth ~result ~i))))
+                                   []
+                                   (enumerate (cc/map first pairs)))]
+                          ~@body)
+                        (.thenCompose func#)))
 
                   ($/future? ~result)
                   (.thenCompose ~(with-meta result {:tag `CompletableFuture}) func#)
@@ -534,6 +634,27 @@
 
 
 (defmacro timeout
+  "
+  A macro to set timeout for given future. Without
+  a block of code, just limits the execution time.
+  When time is up, a future ends up with a timeout
+  exception.
+
+  If the block of code presents, it provides a value
+  for a future should it completes due to timeout.
+
+  Examples:
+
+  ;; let this future spend up to 1 second but no more
+  (-> (future (some-long-action ...))
+      (timeout 1000))
+
+  ;; the same but provide a fallback
+  (-> (future (some-long-action ...))
+      (timeout 1000
+         (log/error ....)
+         {:error 'try next time'}))
+  "
   {:style/indent 1}
   ([f timeout-ms]
    `(.orTimeout ~f ~timeout-ms TimeUnit/MILLISECONDS))
@@ -543,6 +664,7 @@
        (.completeOnTimeout ($/->future ~f)
                            result#
                            ~timeout-ms TimeUnit/MILLISECONDS)))))
+
 
 
 

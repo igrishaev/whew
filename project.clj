@@ -39,6 +39,10 @@
 
   :profiles
   {:dev
-   {:global-vars
+   {:dependencies
+    [[manifold]
+     [cc.qbits/auspex]]
+
+    :global-vars
     {*warn-on-reflection* true
      *assert* true}}})
