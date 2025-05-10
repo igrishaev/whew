@@ -215,14 +215,16 @@ instance will produce a failed future: the one than cannot be propagated through
       ($/then [x]
         (inc x))
       ($/deref))
+
 ;; 2
 
 (-> ($/->future (ex-info "boom" {:a 1}))
     ($/then [x]
-       (inc x))
+      (inc x))
     ($/catch [e]
-        {:data (ex-data e)})
+      {:data (ex-data e)})
     ($/deref))
+
 ;; {:data {:a 1}}
 ~~~
 
@@ -269,13 +271,167 @@ true
 
 ### Chaining Futures
 
-then, then-fn, catch, catch-fn, handle, handle-fn
+`Then` macro provides a new future based on the previous one:
 
-### Derefing Futures
+~~~clojure
+@(-> ($/future 1) ($/then [x] (inc x)))
+2
+~~~
 
-deref, timeout
+It works with non-future values as well. Internally, they get transformed into a
+completed future:
+
+~~~clojure
+@(-> 1 ($/then [x] (inc x)))
+2
+~~~
+
+A macro `then-fn` acts the same but accepts a function which gets applied to a
+result of a previous future:
+
+~~~clojure
+@(-> 1 ($/then-fn inc))
+2
+~~~
+
+You can pass additional arguments as well:
+
+~~~clojure
+@(-> 1 ($/then-fn + 100))
+101
+~~~
+
+The `catch` macro handles an exception occurred beforehand. Pay attention that
+the second `inc` form didn't work because it doesn't apply to a failed future:
+
+~~~clojure
+@(-> ($/future 1)
+     ($/then-fn inc) ;; works
+     ($/then-fn / 0) ;; fails
+     ($/then-fn inc) ;; unreached
+     ($/catch [e]    ;; recovered
+         :this-is-fine))
+
+:this-is-fine
+~~~
+
+As it was mentioned above, the macro unwraps exceptions. The `e` variable will
+be an instance of `ArithmeticException` but not `ExecutionException`.
+
+The `catch-fn` macro acts the same but accepts 1-argument function that handles
+an exception:
+
+~~~clojure
+@(-> ($/future 1)
+     ($/then [x]
+       (throw (ex-info "boom" {:foo 1})))
+     ($/catch-fn ex-data)
+     ($/then [data]
+        {:ex-data data}))
+
+{:ex-data {:foo 1}}
+~~~
+
+It accepts additional arguments like `then-fn` does but usually they're not
+needed.
+
+The `handle` macro handles both a result and an exception at once:
+
+~~~clojure
+@(-> ($/future 1)
+     ($/handle [r e]
+       {:result r :exception e}))
+
+{:result 1 :exception nil}
+~~~
+
+Usually you check if an exception is nil to decide the logic. The `handle-fn`
+macro is similar but accepts a 2-arity function which handles both a result and
+an exception:
+
+~~~clojure
+@(-> ($/future 1)
+     ($/handle-fn
+       (fn [r e]
+         {:result r :exception e})))
+
+{:result 1 :exception nil}
+~~~
+
+In both cases, exceptions are unwrapped.
+
+### Dereferencing
+
+The standard `@` operator and the `deref` function get a value from a future but
+don't' take multiple levels into account:
+
+~~~clojure
+@($/future
+   ($/future
+     ($/future
+       ($/future 1))))
+
+#object[...CompletableFuture 0x287238e4 "...[Completed normally]"]
+~~~
+
+You've to go to the end:
+
+~~~clojure
+@@@@($/future
+     ($/future
+       ($/future
+         ($/future 1))))
+1
+~~~
+
+But the `deref` function from Whew does the same with no issues:
+
+~~~clojure
+($/deref
+  ($/future
+    ($/future
+      ($/future
+        ($/future 1)))))
+1
+~~~
+
+To not hang forever, it accepts an amount of milliseconds (how long to wait) and
+a default value to return on timeout:
+
+~~~clojure
+($/deref ($/future
+           (Thread/sleep 1000)
+           :done)
+         100
+         :too-long)
+:too-long
+~~~
 
 ### Folding
+
+Folding a future means removing its unnecessarily levels, for example:
+
+~~~clojure
+;; this
+($/future ($/future ($/future 1)))
+
+;; becomes this
+($/future 1)
+~~~
+
+When a future is folded, only one `deref` is required to obtain a value. The
+`fold` function does it:
+
+~~~clojure
+@($/fold ($/future ($/future ($/future 1))))
+;; 1
+~~~
+
+The `deref` function described above is nothing but a combo of `fold` and `.get`
+invocations.
+
+Usually you don't need to fold futures manually as `then`, `catch` and other
+macros do it for you.
 
 ### Zipping, Any-of, One-of
 
