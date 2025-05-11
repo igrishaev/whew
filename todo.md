@@ -1,4 +1,5 @@
 
+[clojure.lang.Agent/soloExecutor]
 sleep
 
 complete/deliver?

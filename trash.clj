@@ -12,3 +12,21 @@
 #_
 (defn timeout [^CompletableFuture f timeout-ms]
   (.orTimeout f timeout-ms TimeUnit/MILLISECONDS))
+
+
+(time
+ (do
+   (mapv deref (doall
+                (clojure.core/for [code [101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500]]
+                  ($/future-async
+                    (get-json code)))))
+   nil))
+
+
+(time
+ (do
+   (mapv deref (doall
+                (clojure.core/for [code [101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500 101 202 500]]
+                  ($/future-via [clojure.lang.Agent/soloExecutor]
+                    (get-json code)))))
+   nil))

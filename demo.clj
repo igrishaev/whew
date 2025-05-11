@@ -4,6 +4,7 @@
    [clj-http.client :as http]))
 
 (defn get-json [code]
+  ;; (Thread/sleep 1000)
   (-> (format "https://http.dog/%d.json" code)
       (http/get {:as :json
                  :throw-exceptions true})
