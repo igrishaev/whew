@@ -126,3 +126,12 @@
        {101 resp-101
         321 resp-321
         404 resp-404}))
+
+
+@($/for [code [100 101 200 201 202 500]]
+   (get-json code))
+
+
+@($/for [code [100 101 200 201 202 500]
+         :when (>= code 500)]
+   (get-json code))

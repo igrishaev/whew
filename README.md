@@ -577,6 +577,31 @@ If you unsure about a certain binding, protect it with a `catch` macro:
 
 ### For & Map
 
+The `for` macro acts like the standard `for` but wraps each body expression into
+a future. The result is a future holding all dereferenced values. Here is how we
+collect data for given codes:
+
+~~~clojure
+@($/for [code [100 101 200 201 202 500]]
+   (get-json code))
+
+[{...} {...} {...} {...} {...} {...}]
+~~~
+
+Should any body expression fail, the entire future fails as well. Use `catch`
+macro to handle an exception.
+
+The macro supports special `:let`, `:when` and other options like the standart
+`for` does:
+
+~~~clojure
+@($/for [code [100 101 200 201 202 500]
+         :when (>= code 500)]
+   (get-json code))
+
+[{:status_code 500}]
+~~~
+
 ### Loop & Recur
 
 ### Cancelling & Timeout
