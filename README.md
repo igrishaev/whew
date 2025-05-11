@@ -310,7 +310,7 @@ the second `inc` form didn't work because it doesn't apply to a failed future:
      ($/then-fn / 0) ;; fails
      ($/then-fn inc) ;; unreached
      ($/catch [e]    ;; recovered
-         :this-is-fine))
+       :this-is-fine))
 
 :this-is-fine
 ~~~
@@ -435,7 +435,34 @@ macros do it for you.
 
 ### Zipping, Any-of, One-of
 
-zip, any-of, one-of
+The `zip` macro accepts a number of forms. Each form is turned into an async
+future. The result is a future that gets completed when all the futures complete
+(either successfully or with an exception). It will have a vector of plain
+values:
+
+~~~clojure
+(-> ($/zip 1 ($/future ($/future 2)) 3)
+    ($/then [vs]
+      {:values vs})
+    (deref))
+
+{:values [1 2 3]}
+~~~
+
+Should any of futures fail, the entire future fail with the same exception:
+
+~~~clojure
+(-> ($/zip 1 ($/future ($/future (/ 0 0))) 3)
+    ($/then [vs]
+      {:values vs})
+    ($/catch [e]
+      {:error (ex-message e)})
+    (deref))
+
+{:error "Divide by zero"}
+~~~
+
+any-of, one-of
 
 ### The Let Macro
 
