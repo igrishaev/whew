@@ -78,3 +78,51 @@
       ($/future
         ($/future
           ($/future 42))))
+
+
+@($/let [resp-101 ($/future (get-json 101))
+         resp-202 ($/future (get-json 202))
+         resp-404 ($/future (get-json 404))]
+   {101 resp-101
+    202 resp-202
+    404 resp-404})
+
+
+{101
+ {:image
+  {:jpg "https://http.dog/101.jpg"}
+  :title "Switching Protocols"
+  :url "https://http.dog/101"}
+ 202
+ {:image
+  {:jpg "https://http.dog/202.jpg"}
+  :title "Accepted"
+  :url "https://http.dog/202"}
+ 404
+ {:image
+  {:jpg "https://http.dog/404.jpg"}
+  :title "Not Found"
+  :url "https://http.dog/404"}}
+
+
+@(-> ($/let [resp-101 ($/future (get-json 101))
+             resp-321 ($/future (get-json 321))
+             resp-404 ($/future (get-json 404))]
+       {101 resp-101
+        321 resp-321
+        404 resp-404})
+     ($/catch [e]
+       (-> e
+           ex-data
+           (select-keys [:status :reason-phrase]))))
+
+
+@(-> ($/let [resp-101 ($/future (get-json 101))
+             resp-321 (-> ($/future (get-json 321))
+                          ($/catch [e]
+                            {:error true
+                             :code 321}))
+             resp-404 ($/future (get-json 404))]
+       {101 resp-101
+        321 resp-321
+        404 resp-404}))

@@ -462,9 +462,118 @@ Should any of futures fail, the entire future fail with the same exception:
 {:error "Divide by zero"}
 ~~~
 
-any-of, one-of
+The `all-of` function acts the same: it accepts a collection of futures and
+returns a future when all the items are completed:
+
+~~~clojure
+(-> ($/all-of [1 ($/future ($/future 2)) 3])
+    ($/then [vs]
+      {:values vs})
+    (deref))
+
+{:values [1 2 3]}
+~~~
+
+The difference is, `all-of` is a function but not a macro. It's useful when you
+have a collection of futures produced by other functions.
+
+The `any-of` function takes a collection of futures and waits for the first
+completed one. The result is a future that carries a value from this future:
+
+~~~clojure
+@($/any-of [($/future
+              (Thread/sleep 300)
+              :A)
+            ($/future
+              (Thread/sleep 200)
+              :B)
+            ($/future
+              (Thread/sleep 100)
+              :C)])
+
+;; C
+~~~
+
+The result is `:C` because the third future was the fastest one to complete.
 
 ### The Let Macro
+
+The `let` macros mimics the one from the standard Clojure library, but:
+
+- any value (in the right binding part) can return a future;
+- bindings must not depend on each other;
+- the body is executed when all the futures are completed;
+- the bady has access to derefed values but not futures.
+
+Here is a small demo. We use the `get-json` function that fetches a piece of
+data by a numeric code.
+
+~~~clojure
+@($/let [resp-101 ($/future (get-json 101))
+         resp-202 ($/future (get-json 202))
+         resp-404 ($/future (get-json 404))]
+   {101 resp-101
+    202 resp-202
+    404 resp-404})
+
+{101
+ {:image
+  {:jpg "https://http.dog/101.jpg"}
+  :title "Switching Protocols"
+  :url "https://http.dog/101"}
+ 202
+ {:image
+  {:jpg "https://http.dog/202.jpg"}
+  :title "Accepted"
+  :url "https://http.dog/202"}
+ 404
+ {:image
+  {:jpg "https://http.dog/404.jpg"}
+  :title "Not Found"
+  :url "https://http.dog/404"}}
+~~~
+
+What's important, all three `get-json` invocations are done in parallel. When
+every of them is ready, the body gets access to their values.
+
+Should any binding fail, the entire `let` node fails as well:
+
+~~~clojure
+@(-> ($/let [resp-101 ($/future (get-json 101))
+             resp-321 ($/future (get-json 321)) ;; wrong code
+             resp-404 ($/future (get-json 404))]
+       {101 resp-101
+        321 resp-321
+        404 resp-404})
+     ($/catch [e]
+       (-> e
+           ex-data
+           (select-keys [:status :reason-phrase]))))
+
+{:status 404 :reason-phrase "Not Found"}
+~~~
+
+If you unsure about a certain binding, protect it with a `catch` macro:
+
+~~~clojure
+@(-> ($/let [resp-101 ($/future (get-json 101))
+             resp-321 (-> ($/future (get-json 321))
+                          ($/catch [e]
+                            {:error true
+                             :code 321}))
+             resp-404 ($/future (get-json 404))]
+       {101 resp-101
+        321 resp-321
+        404 resp-404}))
+
+{101
+ {:title "Switching Protocols"
+  :url "https://http.dog/101"}
+ 321 {:error true, :code 321}
+ 404
+ {:title "Not Found"
+  :url "https://http.dog/404"}}
+~~~
 
 ### For & Map
 
