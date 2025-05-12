@@ -1,4 +1,4 @@
-(defproject com.github.igrishaev/whew "0.1.0"
+(defproject com.github.igrishaev/whew "0.1.1-SNAPSHOT"
 
   :description
   "Try to tame CompletableFuture"
