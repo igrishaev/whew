@@ -12,6 +12,24 @@ One might thing about this library as yet another clone of [Manifold][manifold]
 or [Auspex][auspex]. But the API is a bit different and it handles some corner
 cases.
 
+<!-- toc -->
+
+- [Installation](#installation)
+- [Usage](#usage)
+- [API](#api)
+  * [Creating futures](#creating-futures)
+  * [Chaining Futures](#chaining-futures)
+  * [Dereferencing](#dereferencing)
+  * [Folding](#folding)
+  * [Zipping, Any-of, One-of](#zipping-any-of-one-of)
+  * [The Let Macro](#the-let-macro)
+  * [For & Map](#for--map)
+  * [Loop & Recur](#loop--recur)
+  * [Timeout & Cancelling](#timeout--cancelling)
+- [Misc](#misc)
+
+<!-- tocstop -->
+
 ## Installation
 
 Requires Java version at least 8. Add a dependency:
@@ -135,7 +153,7 @@ on. The section below describes these in detail.
 
 ## API
 
-### Creating futures
+### Creating Futures
 
 Both `future` and `future-async` macros take an arbitrary block of code and
 return a future that carries a result of this block:
@@ -228,20 +246,6 @@ instance will produce a failed future: the one than cannot be propagated through
 ;; {:data {:a 1}}
 ~~~
 
-The `future-via` macro acts like `future-async` but accepts a custom Executor
-instance to work with. Any further `then` and `catch` handlers will be served
-within the same executor as well.
-
-~~~clojure
-(with-open [executor
-            (Executors/newFixedThreadPool 2)]
-  (-> ($/future-via [executor]
-        (let [a 1 b 2]
-          (+ a b)))
-      ($/then [x]
-        ...)))
-~~~
-
 The `future?` predicate checks if a fiven value is a future:
 
 ~~~clojure
@@ -268,6 +272,53 @@ false
 ($/failed? -f)
 true
 ~~~
+
+### On Executors
+
+By default, the `CompletableFuture` class relies on the
+`ForkJoinPool/commonPool` executor although it's possible to override it. By
+running benchmarks, I noticed that the standard
+`clojure.core.Agent/soloExecutor` used for built-in futures and agents is more
+robust. Thus, when you spawn futures using `($/future)` and `($/future-async)`
+macros, the `soloExecutor` executor is used.
+
+The `future-via` macro acts like `future-async` but accepts a custom `Executor`
+instance to work with. Any further `then` and `catch` handlers will be served
+within the same executor as well. Here is an example of using a custom
+two-threaded executor:
+
+~~~clojure
+(with-open [executor
+            (Executors/newFixedThreadPool 2)]
+  (-> ($/future-via [executor]
+        (let [a 1 b 2]
+          (+ a b)))
+      ($/then [x]
+        ...)))
+~~~
+
+You can also use a virtual executor that relies on virtual threads available
+since Java 21:
+
+~~~clojure
+(with-open [e (Executors/newVirtualThreadPerTaskExecutor)]
+  ($/future-via [a]
+    ...))
+~~~
+
+The default executor which Whew relies on is stored in the
+`whew.core/EXECUTOR_DEFAULT` variable, and it's initial value is
+`Agent/soloExecutor`. You can switch it globally to something else as follows:
+
+~~~clojure
+($/set-executor! some-executor)
+~~~
+
+At the moment, Whew provides the following `Executor` constants:
+
+- `$/EXECUTOR_CLJ_SOLO`: a built-it `Agent/soloExecutor` Clojure executor;
+- `$/EXECUTOR_CLJ_POOLED`: a built-it `Agent/pooledExecutor` Clojure executor;
+- `$/EXECUTOR_FJ_COMMON`: a default ForkJoin common pool.
 
 ### Chaining Futures
 
@@ -613,11 +664,11 @@ something happens. This is where the `loop` macro helps. It reminds the standard
 - the body can produce a future;
 - bindings can be futures as well.
 
-################ TODO ---------------
-
-The example below fetches JSON date one by one. Every time a future gets
+The example below fetches JSON data one by one. Every time a future gets
 completed, it performs the same block of code using bindings passes through the
 `$/recur` form.
+
+---
 
 The `loop` macro is used rarely with futures because most of the time, other
 facilities are enough. `Loop` is needed when you don't have the entire dataset
@@ -724,12 +775,40 @@ true
 ;; Execution error (CancellationException)
 ~~~
 
-Pay attention that you **will do see** the DONE line printed! This is because of
+Pay attention that you **will see** the `DONE` line printed! This is because of
 implementation of the `CompletableFuture` class: canceling it doesn't interrupt
 the current evaluation.
 
 If you emit a cancellation request before a future has been started there won't
-be any background cancellation.
+be any background cancellation. The following tests proves that:
+
+~~~clojure
+(let [p1 (promise)
+      p2 (promise)]
+  (with-open [e (Executors/newFixedThreadPool 1)]
+    (let [f1 ($/future-via [e]
+               (Thread/sleep 2000)
+               (println "DONE 1")
+               (deliver p1 true))
+          _ (Thread/sleep 500)
+          f2 ($/future-via [e]
+               (Thread/sleep 2000)
+               (println "DONE 2")
+               (deliver p2 true))]
+      (is ($/cancel f1))
+      (is ($/cancel f2))))
+  (is (realized? p1))
+  (is (not (realized? p2))))
+~~~
+
+Above, we have an executor with one thread only. We spawn a future `f1` which
+takes 2 seconds to complete, and wait for half of a second to let it start. The
+second future `f2` will stay in a queue until `f1` is done. Then we cancel both
+futures. The `f1` accepts a cancellation request in the middle of getting
+processed. It gets canceled finally although its work was done: you'll see the
+"DONE 1" printing and the `p1` promise will be delivered. But as `f2` has not
+been started, it gets removed from a queue of the executor. You won't see "DONE
+2", nor the `p2` promise will be delivered.
 
 ## Misc
 

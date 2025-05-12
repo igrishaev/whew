@@ -52,6 +52,7 @@
             (let [a 1 b 2]
               (/ (+ a b) 0)))]
     (is ($/future? f))
+    (Thread/sleep 100)
     (is ($/failed? f)))
 
   (try
@@ -372,7 +373,25 @@
 (deftest test-cancel
   (let [f ($/->future 42)]
     (is (not ($/cancelled? f))))
-  (is (nil? ($/cancelled? 42))))
+
+  (is (nil? ($/cancelled? 42)))
+
+  (let [p1 (promise)
+        p2 (promise)]
+    (with-open [e (Executors/newFixedThreadPool 1)]
+      (let [f1 ($/future-via [e]
+                 (Thread/sleep 2000)
+                 (println "DONE 1")
+                 (deliver p1 true))
+            _ (Thread/sleep 500)
+            f2 ($/future-via [e]
+                 (Thread/sleep 2000)
+                 (println "DONE 2")
+                 (deliver p2 true))]
+        (is ($/cancel f1))
+        (is ($/cancel f2))))
+    (is (realized? p1))
+    (is (not (realized? p2)))))
 
 
 (deftest test-loop

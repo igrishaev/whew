@@ -14,10 +14,13 @@
                             recur
                             let])
   (:import
+   (clojure.lang Agent)
    (java.util.concurrent CompletableFuture
                          CompletionException
                          ExecutionException
                          TimeUnit
+                         ForkJoinPool
+                         Executor
                          TimeoutException)
    (java.util.function Function
                        BiConsumer
@@ -29,6 +32,33 @@
 
 (alias 'cc 'clojure.core)
 (alias '$ 'whew.core)
+
+
+;;
+;; Executors
+;;
+
+(def ^Executor EXECUTOR_CLJ_SOLO
+  Agent/soloExecutor)
+
+(def ^Executor EXECUTOR_CLJ_POOLED
+  Agent/pooledExecutor)
+
+(def ^Executor EXECUTOR_FJ_COMMON
+  (ForkJoinPool/commonPool))
+
+(def ^Executor EXECUTOR_DEFAULT
+  EXECUTOR_CLJ_SOLO)
+
+
+(defn set-executor!
+  "
+  Set a default global executor for all async futures.
+  "
+  [^Executor executor]
+  (alter-var-root (var EXECUTOR_DEFAULT)
+                  (fn [_]
+                    executor)))
 
 
 (defmacro biconsumer
@@ -68,25 +98,6 @@
        ~@body)))
 
 
-(defmacro future-async
-  "
-  Produce an asynchronous CompletableFuture
-  instance from a block of code.
-  "
-  [& body]
-  `(CompletableFuture/supplyAsync
-    (supplier ~@body)))
-
-
-(defmacro future
-  "
-  Acts like `future-async`.
-  "
-  [& body]
-  `(CompletableFuture/supplyAsync
-    (supplier ~@body)))
-
-
 (defmacro future-via
   "
   Spawn a new CompletableFuture within a custom executor
@@ -94,10 +105,28 @@
   executor and so on).
   "
   {:style/indent 1}
-  [[executor] & body]
+  ^CompletableFuture [[^Executor executor] & body]
   `(CompletableFuture/supplyAsync
     (supplier ~@body)
     ~executor))
+
+
+(defmacro future-async
+  "
+  Produce an asynchronous CompletableFuture
+  instance from a block of code.
+  "
+  ^CompletableFuture [& body]
+  `(future-via [EXECUTOR_DEFAULT]
+     ~@body))
+
+
+(defmacro future
+  "
+  Acts like `future-async`.
+  "
+  ^CompletableFuture [& body]
+  `(future-async ~@body))
 
 
 (defmacro future-sync
@@ -106,7 +135,7 @@
   future instance with the result. The block is
   executed synchronously in the current thread.
   "
-  [& body]
+  ^CompletableFuture [& body]
   `(CompletableFuture/completedFuture
     (do ~@body)))
 
@@ -116,7 +145,7 @@
   Check if a given argument is an instance
   of CompletableFuture.
   "
-  [x]
+  ^Boolean [x]
   (instance? CompletableFuture x))
 
 
