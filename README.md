@@ -1,23 +1,23 @@
 # Whew
 
 A zero-deps library that wraps Java's `CompletableFuture` class. Provides
-functions and macros for passing futures through handlers, looping over them,
+functions and macros to drag futures through handlers, looping over them,
 mapping and so on. Deals with nested futures (when a future returns a future and
 so on).
 
 [manifold]: https://github.com/clj-commons/manifold
 [auspex]: https://github.com/mpenet/auspex
 
-One might thing about this library as yet another clone of [Manifold][manifold]
-or [Auspex][auspex]. But the API is a bit different and it handles some corner
-cases.
+The library might remind you [Manifold][manifold] or [Auspex][auspex]. But the
+API is a bit different and it handles some special cases.
 
 <!-- toc -->
 
 - [Installation](#installation)
 - [Usage](#usage)
 - [API](#api)
-  * [Creating futures](#creating-futures)
+  * [Creating Futures](#creating-futures)
+  * [On Executors](#on-executors)
   * [Chaining Futures](#chaining-futures)
   * [Dereferencing](#dereferencing)
   * [Folding](#folding)
@@ -52,12 +52,12 @@ Import the library:
     [whew.core :as $]))
 ~~~
 
-It provides functions and macros named after their Clojure counterparts,
-e.g. `map`, `future`, `loop`, etc. Thus, never `:use` this library but
+Whew provides functions and macros named after their Clojure counterparts,
+e.g. `map`, `future`, `loop`, etc. Never `:use` this library but rather
 `:require` it using an alias. Here and below we will use `$`.
 
 A quick demo. Let's prepare a function that makes some IO, for example fetches
-JSON from network.
+JSON from network:
 
 ~~~clojure
 (defn get-json [code]
@@ -67,7 +67,7 @@ JSON from network.
       :body))
 ~~~
 
-Here is how you run it in a future:
+Here is how you run it as a future:
 
 ~~~clojure
 (def -f ($/future
@@ -91,10 +91,9 @@ that gets executed in the background. Now deref it, and you'll get a result:
 ~~~
 
 By derefing a future, you freeze the current thread forcing it to wait until the
-future is ready. But you can assign a post-processing handler to it which gets
-run in the background as well once a future has done its work. Adding a handler
-returns a new future. Below, we compose a bit of HTML markup from a fetched
-data:
+future is ready. But you can assign a post-processing handler which gets run in
+the background with a result of a future. Adding a handler returns a new
+future. Below, we compose a bit of HTML markup out from a fetched data:
 
 ~~~clojure
 (-> -f
@@ -125,8 +124,8 @@ a future as well:
 You can enqueue as many `then` handles as you want.
 
 Should any of them throw an exception, a future becomes failed, and no more
-further `then` handlers apply. If you `deref` such a failed future, you'll get
-an exception. To recover from it, there is another `catch` handler:
+further handlers apply. If you `deref` such a failed future, you'll get an
+exception. To recover from it, there is another `catch` handler:
 
 ~~~clojure
 (-> ($/future
@@ -139,13 +138,12 @@ an exception. To recover from it, there is another `catch` handler:
 {:error true, :message "clj-http: status 404"}
 ~~~
 
-The binding `e` symbol is bound to an exception value occurred before. What's
-important, it will be an **unwrapped exception**! By default, the
-`CompletableFuture` class wraps any runtime exception into various classes like
-`ExecutionException` or `CompletionException`. If you branch your logic
-depending on exception class or inheritance, you'll need to get an `ex-cause`
-first. But the `catch` macro handles it for you: the `e` variable will be of the
-right class.
+The `e` symbol is bound to an exception value occurred before. What's important,
+it will be an **unwrapped exception**! By default, the `CompletableFuture` class
+wraps any runtime exception into various classes like `ExecutionException` or
+`CompletionException`. If you branch your logic depending on exception class or
+inheritance, you'll need to get an `ex-cause` first. But the `catch` macro
+handles it for you: the `e` variable will be of the right class.
 
 Whew provides a number of various macros to express logic throughout futures:
 mixing and chaining them, zipping, waiting multiple futures for completion and so
@@ -176,7 +174,7 @@ so on:
       ($/future 42))))
 ~~~
 
-Hanlde the result in a naive way, you'll have to deref such a future four times:
+To handle the result in a standard way, you'll have to deref it four times:
 
 ~~~clojure
 @@@@($/future
@@ -185,14 +183,14 @@ Hanlde the result in a naive way, you'll have to deref such a future four times:
           ($/future 42))))
 ~~~
 
-But Whew knows how to handle such cases:
+But Whew handles such cases:
 
 ~~~clojure
 (-> ($/future
       ($/future
         ($/future
           ($/future 42))))
-    ($/then [x] (inc x))
+    ($/then [x] (inc x)) ;; x = 42
     (deref))
 43
 ~~~
@@ -208,12 +206,12 @@ There is a special `deref` function that takes folding into account:
 42
 ~~~
 
-Usually you don't need to deref futures neither with the standard `deref` nor a
-custom `$/deref`.
+Usually you don't need to deref futures explicitly neither with the standard
+`deref` nor the custom `$/deref`.
 
 The `future-sync` macro takes a block of code but executes it immediately in the
 same thread and produces a **completed** future. When a future is completed, it
-means it can be `deref`-fed right now without waiting. This is useful when you
+means it can be `deref`-fed right now without delay. This is useful when you
 want just to mimic a future.
 
 The following piece of code will throw immediately:
@@ -225,7 +223,7 @@ The following piece of code will throw immediately:
 ~~~
 
 The `->future` function turns any value into a completed future. Any `Throwable`
-instance will produce a failed future: the one than cannot be propagated through
+instance produces a failed future: the one than cannot be propagated through
 `then` handlers, but only `catch`.
 
 ~~~clojure
@@ -246,7 +244,7 @@ instance will produce a failed future: the one than cannot be propagated through
 ;; {:data {:a 1}}
 ~~~
 
-The `future?` predicate checks if a fiven value is a future:
+The `future?` predicate checks if a g value is a future:
 
 ~~~clojure
 ($/future? ($/future 1))
@@ -256,8 +254,8 @@ true
 false
 ~~~
 
-The `failed?` predicated checks if a future has failed. Pay attention that it
-might take some time to detect it:
+The `failed?` predicated checks if a future has failed. Pay attention that in
+the beginning, we don't know it untill it really has:
 
 ~~~clojure
 (def -f ($/future
@@ -278,13 +276,13 @@ true
 By default, the `CompletableFuture` class relies on the
 `ForkJoinPool/commonPool` executor although it's possible to override it. By
 running benchmarks, I noticed that the standard
-`clojure.core.Agent/soloExecutor` used for built-in futures and agents is more
-robust. Thus, when you spawn futures using `($/future)` and `($/future-async)`
-macros, the `soloExecutor` executor is used.
+`clojure.core.Agent/soloExecutor` used for built-in Clojure futures and agents
+is more robust. Thus, when you spawn futures using `($/future)` and
+`($/future-async)` macros, the `soloExecutor` executor is used.
 
 The `future-via` macro acts like `future-async` but accepts a custom `Executor`
 instance to work with. Any further `then` and `catch` handlers will be served
-within the same executor as well. Here is an example of using a custom
+under the same executor as well. Here is an example of using a custom
 two-threaded executor:
 
 ~~~clojure
@@ -345,7 +343,7 @@ result of a previous future:
 2
 ~~~
 
-You can pass additional arguments as well:
+You can pass additional arguments too:
 
 ~~~clojure
 @(-> 1 ($/then-fn + 100))
@@ -386,7 +384,7 @@ an exception:
 It accepts additional arguments like `then-fn` does but usually they're not
 needed.
 
-The `handle` macro handles both a result and an exception at once:
+The `handle` macro captures both a result and an exception as a pair:
 
 ~~~clojure
 @(-> ($/future 1)
@@ -414,7 +412,7 @@ In both cases, exceptions are unwrapped.
 ### Dereferencing
 
 The standard `@` operator and the `deref` function get a value from a future but
-don't' take multiple levels into account:
+don't take multiple levels into account:
 
 ~~~clojure
 @($/future
@@ -425,7 +423,7 @@ don't' take multiple levels into account:
 #object[...CompletableFuture 0x287238e4 "...[Completed normally]"]
 ~~~
 
-You've to go to the end:
+So you've to go to the end:
 
 ~~~clojure
 @@@@($/future
@@ -435,7 +433,7 @@ You've to go to the end:
 1
 ~~~
 
-But the `deref` function from Whew does the same with no issues:
+But the `$/deref` function from Whew does the same with no issues:
 
 ~~~clojure
 ($/deref
@@ -481,15 +479,14 @@ When a future is folded, only one `deref` is required to obtain a value. The
 The `deref` function described above is nothing but a combo of `fold` and `.get`
 invocations.
 
-Usually you don't need to fold futures manually as `then`, `catch` and other
-macros do it for you.
+Usually you don't need to fold futures manually because `then`, `catch` and
+other macros do it for you.
 
 ### Zipping, Any-of, One-of
 
 The `zip` macro accepts a number of forms. Each form is turned into an async
 future. The result is a future that gets completed when all the futures complete
-(either successfully or with an exception). It will have a vector of plain
-values:
+(either successfully or with an exception). It gets a vector of plain values:
 
 ~~~clojure
 (-> ($/zip 1 ($/future ($/future 2)) 3)
@@ -500,7 +497,7 @@ values:
 {:values [1 2 3]}
 ~~~
 
-Should any of futures fail, the entire future fail with the same exception:
+Should any future fail, so the entire future does with the same exception:
 
 ~~~clojure
 (-> ($/zip 1 ($/future ($/future (/ 0 0))) 3)
@@ -514,7 +511,7 @@ Should any of futures fail, the entire future fail with the same exception:
 ~~~
 
 The `all-of` function acts the same: it accepts a collection of futures and
-returns a future when all the items are completed:
+returns a future with completed items:
 
 ~~~clojure
 (-> ($/all-of [1 ($/future ($/future 2)) 3])
@@ -529,7 +526,7 @@ The difference is, `all-of` is a function but not a macro. It's useful when you
 have a collection of futures produced by other functions.
 
 The `any-of` function takes a collection of futures and waits for the first
-completed one. The result is a future that carries a value from this future:
+completed one. The result is a future that carries a value of this future:
 
 ~~~clojure
 @($/any-of [($/future
@@ -545,16 +542,16 @@ completed one. The result is a future that carries a value from this future:
 ;; C
 ~~~
 
-The result is `:C` because the third future was the fastest one to complete.
+The result is `:C` because the third future took less time to complete.
 
 ### The Let Macro
 
-The `let` macros mimics the one from the standard Clojure library, but:
+The `let` macro mimics the one from the standard Clojure library, but:
 
 - any value (in the right binding part) can return a future;
 - bindings must not depend on each other;
 - the body is executed when all the futures are completed;
-- the bady has access to derefed values but not futures.
+- the body has access to derefed values but not futures.
 
 Here is a small demo. We use the `get-json` function that fetches a piece of
 data by a numeric code.
@@ -629,8 +626,8 @@ If you unsure about a certain binding, protect it with a `catch` macro:
 ### For & Map
 
 The `for` macro acts like the standard `for` but wraps each body expression into
-a future. The result is a future holding all dereferenced values. Here is how we
-collect data for given codes:
+a future. The result is a future holding all completed values. Here is how we
+collect responses for given codes:
 
 ~~~clojure
 @($/for [code [100 101 200 201 202 500]]
@@ -660,12 +657,12 @@ something happens. This is where the `loop` macro helps. It reminds the standard
 `loop/recur` combo but has the following features:
 
 - it returns a future that is executed in the background;
-- use a special `$/recur` form but not the standard `recur` from Clojure.core;
+- use a special `$/recur` form but not the standard `recur` from `clojure.core`;
 - the body can produce a future;
 - bindings can be futures as well.
 
 The example below fetches JSON data one by one. Every time a future gets
-completed, it performs the same block of code using bindings passes through the
+completed, it performs the same block of code using bindings passed through the
 `$/recur` form.
 
 ~~~clojure
@@ -687,19 +684,19 @@ completed, it performs the same block of code using bindings passes through the
 [{...} {...} ...]
 ~~~
 
-The `loop` macro is used rarely with futures because most of the time, other
-facilities are enough. `Loop` is needed when you don't have the entire dataset
-in your hand, and fetch it from somewhere. A good example is pagination: you
-fetch data by chunks and accumulate them somehow until the result is
-empty. Thus, you cannot runs multiple futures at once as you don't know for how
-long to proceed. This kind of fetching can be expressed as follows:
+The `loop` macro is used rarely with futures because other facilities are
+usually enough. `Loop` is needed when you don't have an entire dataset at once,
+and fetch it on the fly. A good example is pagination: you fetch data by chunks
+and accumulate until the result is empty. Thus, you cannot run multiple futures
+at once because you don't know for how long to proceed. This kind of fetching
+can be expressed as follows:
 
 ~~~clojure
 (def PAGE_SIZE 100)
 
 (-> ($/loop [acc []
              off 0]
-      (let [result (fetch-items :foobar {:offset off :size PAGE_SIZE})
+      (let [result (fetch-items {:offset off :size PAGE_SIZE})
             items (-> result :response :items)]
         (if (seq items)
           ($/recur (into acc items) (+ off PAGE_SIZE))
@@ -713,7 +710,7 @@ long to proceed. This kind of fetching can be expressed as follows:
 
 ### Timeout & Cancelling
 
-Any future can be limited in time with two strateges. First, it fails with a
+Any future can be limited in time by two strateges. First, it fails with a
 timeout exception, and it's up to you how to handle this. Second, you specify a
 default value for this future which comes into play on timeout.
 
@@ -732,10 +729,10 @@ following example will fail because the sleep time is longer than the timeout:
 ~~~
 
 Pay attention that the `TimeoutException` instance has no message: the
-`(ex-message e)` form will return nil.
+`(ex-message e)` invocation will return nil.
 
-The macro acceps an arbitrary block of code as a default value for a future when
-it breaches timeout:
+The macro accepts an arbitrary block of code. The result becomes a value for a
+future when it breaches timeout:
 
 ~~~clojure
 @(-> ($/future
@@ -756,10 +753,10 @@ it breaches timeout:
 ~~~
 
 Most likely you don't need to set timeouts explicitly: modern HTTP clients allow
-to pass timeout in settings when making a call. The same applies to any
-libraries working with sockets. But in rare cases, an explicit timeout helps.
+to specify socket timings when making calls. The same applies to any libraries
+working with sockets. But in rare cases, an explicit timeout might help.
 
-Canceling is something different to timeout. It is when you ask to reject a
+Canceling is something opposite to a timeout. It is when you ask to reject a
 future spawned previously. Canceling a completed future has no effect. But if it
 has not been completed or failed before, a cancellation request completes a
 future with `CancellationException`. Later or, such a future can be checked for
@@ -792,12 +789,12 @@ true
 ;; Execution error (CancellationException)
 ~~~
 
-Pay attention that you **will see** the `DONE` line printed! This is because of
-implementation of the `CompletableFuture` class: canceling it doesn't interrupt
-the current evaluation.
+Pay attention that you **will see** the `DONE` line printed! This is because a
+future was in the middle of processing, and the `CompletableFuture` class
+doesn't interrupt calculation.
 
-If you emit a cancellation request before a future has been started there won't
-be any background cancellation. The following tests proves that:
+If you emit a cancellation request **before** a future has been started there
+won't be any background cancellation. The following tests proves it:
 
 ~~~clojure
 (let [p1 (promise)
@@ -821,11 +818,11 @@ be any background cancellation. The following tests proves that:
 Above, we have an executor with one thread only. We spawn a future `f1` which
 takes 2 seconds to complete, and wait for half of a second to let it start. The
 second future `f2` will stay in a queue until `f1` is done. Then we cancel both
-futures. The `f1` accepts a cancellation request in the middle of getting
-processed. It gets canceled finally although its work was done: you'll see the
-"DONE 1" printing and the `p1` promise will be delivered. But as `f2` has not
-been started, it gets removed from a queue of the executor. You won't see "DONE
-2", nor the `p2` promise will be delivered.
+futures. The `f1` accepts a cancellation request in the middle of processing. It
+gets canceled although the work is done: you'll see the "DONE 1" printing and
+the `p1` promise will be delivered. But as `f2` has not been started, it gets
+removed from a queue of the executor. You won't see "DONE 2", nor the `p2`
+promise will be delivered.
 
 ## Misc
 
