@@ -668,7 +668,24 @@ The example below fetches JSON data one by one. Every time a future gets
 completed, it performs the same block of code using bindings passes through the
 `$/recur` form.
 
----
+~~~clojure
+@($/loop [codes [100 101 200 201 202 500]
+          acc []]
+   (if-let [code (first codes)]
+     (let [result (get-json code)]
+       (println (format "result for status %d" code))
+       ($/recur (next codes) (conj acc result)))
+     acc))
+
+;; result for status 100
+;; result for status 101
+;; result for status 200
+;; result for status 201
+;; result for status 202
+;; result for status 500
+
+[{...} {...} ...]
+~~~
 
 The `loop` macro is used rarely with futures because most of the time, other
 facilities are enough. `Loop` is needed when you don't have the entire dataset
