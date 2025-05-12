@@ -691,7 +691,45 @@ Most likely you don't need to set timeouts explicitly: modern HTTP clients allow
 to pass timeout in settings when making a call. The same applies to any
 libraries working with sockets. But in rare cases, an explicit timeout helps.
 
+Canceling is something different to timeout. It is when you ask to reject a
+future spawned previously. Canceling a completed future has no effect. But if it
+has not been completed or failed before, a cancellation request completes a
+future with `CancellationException`. Later or, such a future can be checked for
+cancellation state with a predicate.
 
+The `cancel` function tries to cancel a future. The result is a boolean value
+meaning if the attempt was successful or not. Canceling a non-future value has
+no effect, and the result will be `nil`:
+
+~~~clojure
+(def -f ($/future 1))
+
+($/cancel -f)
+false ;; already completed
+~~~
+
+Let's try a slow future:
+
+~~~clojure
+(def -f ($/future
+          (Thread/sleep 5000)
+          (println "DONE")))
+
+($/cancel -f)
+
+($/cancelled? -f)
+true
+
+@-f ;; throws
+;; Execution error (CancellationException)
+~~~
+
+Pay attention that you **will do see** the DONE line printed! This is because of
+implementation of the `CompletableFuture` class: canceling it doesn't interrupt
+the current evaluation.
+
+If you emit a cancellation request before a future has been started there won't
+be any background cancellation.
 
 ## Misc
 
