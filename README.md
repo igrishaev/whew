@@ -588,8 +588,8 @@ collect data for given codes:
 [{...} {...} {...} {...} {...} {...}]
 ~~~
 
-Should any body expression fail, the entire future fails as well. Use `catch`
-macro to handle an exception.
+Should any body expression fail, the entire future fails as well. Use the
+`catch` macro to handle an exception.
 
 The macro supports special `:let`, `:when` and other options like the standart
 `for` does:
@@ -604,7 +604,94 @@ The macro supports special `:let`, `:when` and other options like the standart
 
 ### Loop & Recur
 
-### Cancelling & Timeout
+Sometimes you need a future that returns a future that returs... and so on until
+something happens. This is where the `loop` macro helps. It reminds the standard
+`loop/recur` combo but has the following features:
+
+- it returns a future that is executed in the background;
+- use a special `$/recur` form but not the standard `recur` from Clojure.core;
+- the body can produce a future;
+- bindings can be futures as well.
+
+################ TODO ---------------
+
+The example below fetches JSON date one by one. Every time a future gets
+completed, it performs the same block of code using bindings passes through the
+`$/recur` form.
+
+The `loop` macro is used rarely with futures because most of the time, other
+facilities are enough. `Loop` is needed when you don't have the entire dataset
+in your hand, and fetch it from somewhere. A good example is pagination: you
+fetch data by chunks and accumulate them somehow until the result is
+empty. Thus, you cannot runs multiple futures at once as you don't know for how
+long to proceed. This kind of fetching can be expressed as follows:
+
+~~~clojure
+(def PAGE_SIZE 100)
+
+(-> ($/loop [acc []
+             off 0]
+      (let [result (fetch-items :foobar {:offset off :size PAGE_SIZE})
+            items (-> result :response :items)]
+        (if (seq items)
+          ($/recur (into acc items) (+ off PAGE_SIZE))
+          acc)))
+    ($/then [items]
+      (process-items items))
+    ($/catch [e]
+      (log/errorf e "error: %s" 42)
+      (report-error e)))
+~~~
+
+### Timeout & Cancelling
+
+Any future can be limited in time with two strateges. First, it fails with a
+timeout exception, and it's up to you how to handle this. Second, you specify a
+default value for this future which comes into play on timeout.
+
+The `timeout` macro has two bodies for both cases. The first form accepts a
+future and a number of milliseconds. It assigns a timeout to a future. The
+following example will fail because the sleep time is longer than the timeout:
+
+~~~clojure
+@(-> ($/future
+       (Thread/sleep 1000))
+     ($/timeout 100)
+     ($/catch [e]
+       {:error (type e)}))
+
+{:error java.util.concurrent.TimeoutException}
+~~~
+
+Pay attention that the `TimeoutException` instance has no message: the
+`(ex-message e)` form will return nil.
+
+The macro acceps an arbitrary block of code as a default value for a future when
+it breaches timeout:
+
+~~~clojure
+@(-> ($/future
+       (Thread/sleep 1000))
+     ($/timeout 100
+        (let [a 1 b 2]
+          (println "recovering from timeout")
+          {:some ["other" :value]}))
+     ($/catch [e]
+       {:error (type e)})
+     ($/then [x]
+        (println "final handler")
+        {:data x}))
+
+;; recovering from timeout
+;; final handler
+;; {:data {:some ["other" :value]}}
+~~~
+
+Most likely you don't need to set timeouts explicitly: modern HTTP clients allow
+to pass timeout in settings when making a call. The same applies to any
+libraries working with sockets. But in rare cases, an explicit timeout helps.
+
+
 
 ## Misc
 

@@ -136,3 +136,27 @@
 @($/for [code [100 101 200 201 202 500]
          :when (>= code 500)]
    (get-json code))
+
+
+@($/loop [codes [100 101 200 201 202 500]
+          acc []]
+   (if-let [code (first codes)]
+     (let [result (get-json code)]
+       ($/recur (next codes) (conj acc result)))
+     acc))
+
+
+(def PAGE_SIZE 100)
+
+(-> ($/loop [acc []
+             off 0]
+      (let [result (fetch-items :foobar {:offset off :size PAGE_SIZE})
+            items (-> result :response :items)]
+        (if (seq items)
+          ($/recur (into acc items) (+ off PAGE_SIZE))
+          acc)))
+    ($/then [items]
+      (process-items items))
+    ($/catch [e]
+      (log/errorf e "error: %s" 42)
+      (report-error e)))

@@ -21,7 +21,9 @@
   :managed-dependencies
   [[org.clojure/clojure "1.11.1"]
    [manifold "0.4.3"]
-   [cc.qbits/auspex "1.0.3"]]
+   [cc.qbits/auspex "1.0.3"]
+   [clj-http "3.12.0"]
+   [cheshire "5.10.0"]]
 
   :dependencies
   [[org.clojure/clojure :scope "provided"]]
@@ -41,7 +43,9 @@
   {:dev
    {:dependencies
     [[manifold]
-     [cc.qbits/auspex]]
+     [cc.qbits/auspex]
+     [clj-http "3.12.0"]
+     [cheshire "5.10.0"]]
 
     :global-vars
     {*warn-on-reflection* true
