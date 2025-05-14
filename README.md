@@ -214,12 +214,20 @@ same thread and produces a **completed** future. When a future is completed, it
 means it can be `deref`-fed right now without delay. This is useful when you
 want just to mimic a future.
 
+The block of code is implicitly wrapped with try/catch. Should an exception pop
+up, the result will be a failed future with this exception:
+
 The following piece of code will throw immediately:
 
 ~~~clojure
-($/future-sync
-  (let [a 1 b 2]
-    (/ 0 0)))
+(def -f ($/future-sync (/ 0 0)))
+
+($/failed? -f)
+true
+
+@-f
+;; Execution error (ArithmeticException)...
+;; Divide by zero
 ~~~
 
 The `->future` function turns any value into a completed future. Any `Throwable`

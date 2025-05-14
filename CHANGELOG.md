@@ -1,7 +1,7 @@
 
 ## 0.1.1-SNAPSHOT
 
-- ?
+- future-sync handle exceptions
 - ?
 - ?
 

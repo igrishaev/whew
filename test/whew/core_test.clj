@@ -55,14 +55,15 @@
     (Thread/sleep 100)
     (is ($/failed? f)))
 
-  (try
-    ($/future-sync
-      (let [a 1 b 2]
-        (/ (+ a b) 0)))
-    (is false)
-    (catch ArithmeticException e
-      (is (= "Divide by zero"
-             (ex-message e))))))
+  (let [f ($/future-sync
+            (let [a 1 b 2]
+              (/ (+ a b) 0)))]
+    (is ($/future? f))
+    (is (= {:type java.lang.ArithmeticException}
+           (-> f
+               ($/catch [e]
+                 {:type (type e)})
+               (deref))))))
 
 
 (deftest test-deref

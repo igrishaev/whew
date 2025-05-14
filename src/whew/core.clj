@@ -132,12 +132,17 @@
 (defmacro future-sync
   "
   Evaluate a block of code and emit a completed
-  future instance with the result. The block is
-  executed synchronously in the current thread.
+  future instance with the result. Should the block
+  fail with an exception, return a failed future
+  with that exeption. The block is executed synchronously
+  in the current thread.
   "
   ^CompletableFuture [& body]
-  `(CompletableFuture/completedFuture
-    (do ~@body)))
+  `(try
+     (cc/let [result# (do ~@body)]
+       (CompletableFuture/completedFuture result#))
+     (catch Throwable e#
+       (CompletableFuture/failedFuture e#))))
 
 
 (defn future?
