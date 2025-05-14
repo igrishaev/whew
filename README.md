@@ -36,10 +36,10 @@ Requires Java version at least 8. Add a dependency:
 
 ~~~clojure
 ;; lein
-[com.github.igrishaev/whew "0.1.0"]
+[com.github.igrishaev/whew "0.1.1"]
 
 ;; deps
-com.github.igrishaev/whew {:mvn/version "0.1.0"}
+com.github.igrishaev/whew {:mvn/version "0.1.1"}
 ~~~
 
 ## Usage
